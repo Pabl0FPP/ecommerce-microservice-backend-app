@@ -21,6 +21,7 @@ import com.selimhorri.app.domain.id.FavouriteId;
 import com.selimhorri.app.dto.FavouriteDto;
 import com.selimhorri.app.dto.response.collection.DtoCollectionResponse;
 import com.selimhorri.app.service.FavouriteService;
+import com.selimhorri.app.util.ParserUtil;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,12 +42,12 @@ public class FavouriteResource {
 	
 	@GetMapping("/{userId}/{productId}/{likeDate}")
 	public ResponseEntity<FavouriteDto> findById(
-			@PathVariable("userId") final String userId, 
-			@PathVariable("productId") final String productId, 
-			@PathVariable("likeDate") final String likeDate) {
+				@PathVariable("userId") final String userId, 
+				@PathVariable("productId") final String productId, 
+				@PathVariable("likeDate") final String likeDate) {
 		log.info("*** FavouriteDto, resource; fetch favourite by id *");
 		return ResponseEntity.ok(this.favouriteService.findById(
-				new FavouriteId(Integer.parseInt(userId), Integer.parseInt(productId), 
+				new FavouriteId(ParserUtil.parseId(userId, "userId"), ParserUtil.parseId(productId, "productId"), 
 						LocalDateTime.parse(likeDate, DateTimeFormatter.ofPattern(AppConstant.LOCAL_DATE_TIME_FORMAT)))));
 	}
 	
@@ -79,11 +80,11 @@ public class FavouriteResource {
 	
 	@DeleteMapping("/{userId}/{productId}/{likeDate}")
 	public ResponseEntity<Boolean> deleteById(
-			@PathVariable("userId") final String userId, 
-			@PathVariable("productId") final String productId, 
-			@PathVariable("likeDate") final String likeDate) {
+				@PathVariable("userId") final String userId, 
+				@PathVariable("productId") final String productId, 
+				@PathVariable("likeDate") final String likeDate) {
 		log.info("*** Boolean, resource; delete favourite by id *");
-		this.favouriteService.deleteById(new FavouriteId(Integer.parseInt(userId), Integer.parseInt(productId), 
+		this.favouriteService.deleteById(new FavouriteId(ParserUtil.parseId(userId, "userId"), ParserUtil.parseId(productId, "productId"), 
 						LocalDateTime.parse(likeDate, DateTimeFormatter.ofPattern(AppConstant.LOCAL_DATE_TIME_FORMAT))));
 		return ResponseEntity.ok(true);
 	}

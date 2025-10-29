@@ -13,7 +13,8 @@ import com.selimhorri.app.domain.id.FavouriteId;
 import com.selimhorri.app.dto.FavouriteDto;
 import com.selimhorri.app.dto.ProductDto;
 import com.selimhorri.app.dto.UserDto;
-import com.selimhorri.app.exception.wrapper.FavouriteNotFoundException;
+import com.selimhorri.app.exception.custom.ResourceNotFoundException;
+import com.selimhorri.app.exception.ErrorCode;
 import com.selimhorri.app.helper.FavouriteMappingHelper;
 import com.selimhorri.app.repository.FavouriteRepository;
 import com.selimhorri.app.service.FavouriteService;
@@ -63,8 +64,7 @@ public class FavouriteServiceImpl implements FavouriteService {
 									.PRODUCT_SERVICE_API_URL + "/" + f.getProductId(), ProductDto.class));
 					return f;
 				})
-				.orElseThrow(() -> new FavouriteNotFoundException(
-						String.format("Favourite with id: [%s] not found!", favouriteId)));
+				.orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FAVOURITE_NOT_FOUND, favouriteId));
 	}
 	
 	@Override
