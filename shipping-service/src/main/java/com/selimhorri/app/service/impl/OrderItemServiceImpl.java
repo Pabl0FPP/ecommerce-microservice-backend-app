@@ -68,7 +68,7 @@ public class OrderItemServiceImpl implements OrderItemService {
 	@Override
 	public OrderItemDto save(final OrderItemDto orderItemDto) {
 		log.info("*** OrderItemDto, service; save orderItem *");
-		if (orderItemDto == null || orderItemDto.getOrderDto() == null || orderItemDto.getProductDto() == null) {
+		if (orderItemDto == null || orderItemDto.getOrderId() == null || orderItemDto.getProductId() == null) {
 			throw new InvalidInputException(ErrorCode.MISSING_REQUIRED_FIELD);
 		}
 
@@ -88,7 +88,7 @@ public class OrderItemServiceImpl implements OrderItemService {
 	@Override
 	public OrderItemDto update(final OrderItemDto orderItemDto) {
 		log.info("*** OrderItemDto, service; update orderItem *");
-		if (orderItemDto == null || orderItemDto.getOrderDto() == null || orderItemDto.getProductDto() == null) {
+		if (orderItemDto == null || orderItemDto.getOrderId() == null || orderItemDto.getProductId() == null) {
 			throw new InvalidInputException(ErrorCode.MISSING_REQUIRED_FIELD);
 		}
 
