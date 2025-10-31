@@ -18,6 +18,7 @@ SERVICES=(
   shipping-service
   product-service
   order-service
+  payment-service
   favourite-service
   proxy-client
 )
