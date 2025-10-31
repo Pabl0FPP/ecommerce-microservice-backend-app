@@ -88,6 +88,9 @@ public class FavouriteServiceImplTest {
         LocalDateTime now = LocalDateTime.now();
         Favourite fav = Favourite.builder().userId(5).productId(6).likeDate(now).build();
         when(this.favouriteRepository.save(any(Favourite.class))).thenReturn(fav);
+        // stub existsById to simulate existing entity
+        FavouriteId id = FavouriteMappingHelper.toId(fav);
+        when(this.favouriteRepository.existsById(id)).thenReturn(true);
 
         FavouriteDto dto = FavouriteMappingHelper.map(fav);
         FavouriteDto result = favouriteService.update(dto);
@@ -99,6 +102,8 @@ public class FavouriteServiceImplTest {
     @Test
     void deleteById_callsRepository() {
         FavouriteId id = new FavouriteId(7,8, LocalDateTime.now());
+        // stub existsById to simulate existing entity so service won't throw
+        when(this.favouriteRepository.existsById(id)).thenReturn(true);
         doNothing().when(this.favouriteRepository).deleteById(id);
 
         assertDoesNotThrow(() -> favouriteService.deleteById(id));
