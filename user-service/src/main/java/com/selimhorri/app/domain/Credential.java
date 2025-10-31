@@ -74,3 +74,10 @@ public final class Credential extends AbstractMappedEntity implements Serializab
 	private Set<VerificationToken> verificationTokens;
 	
 }
+
+
+
+
+
+
+

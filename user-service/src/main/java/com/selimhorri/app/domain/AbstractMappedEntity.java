@@ -39,3 +39,13 @@ abstract public class AbstractMappedEntity implements Serializable {
 	private Instant updatedAt;
 	
 }
+
+
+
+
+
+
+
+
+
+

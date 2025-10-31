@@ -87,3 +87,13 @@ public class VerificationTokenResource {
 	
 	
 }
+
+
+
+
+
+
+
+
+
+

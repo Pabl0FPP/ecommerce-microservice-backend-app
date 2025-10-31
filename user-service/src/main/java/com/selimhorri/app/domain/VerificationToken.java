@@ -56,3 +56,12 @@ public final class VerificationToken extends AbstractMappedEntity implements Ser
 	private Credential credential;
 	
 }
+
+
+
+
+
+
+
+
+

@@ -93,5 +93,3 @@ public class CredentialServiceImpl implements CredentialService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USERNAME_NOT_FOUND, username));
     }
 }
-
-

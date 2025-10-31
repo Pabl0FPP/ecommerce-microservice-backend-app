@@ -63,3 +63,13 @@ public final class User extends AbstractMappedEntity implements Serializable {
 	private Credential credential;
 	
 }
+
+
+
+
+
+
+
+
+
+
