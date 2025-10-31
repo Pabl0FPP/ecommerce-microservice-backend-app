@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import com.selimhorri.app.exception.custom.DuplicateResourceException;
+import com.selimhorri.app.exception.custom.ExternalServiceException;
 import com.selimhorri.app.exception.custom.InvalidInputException;
 import com.selimhorri.app.exception.custom.ResourceNotFoundException;
 
@@ -305,6 +306,113 @@ public class ApiExceptionHandler {
     private String generateTraceId() {
 	return UUID.randomUUID().toString().substring(0, 8);
     }
+
+    @ExceptionHandler(ExternalServiceException.class)
+public ResponseEntity<ErrorResponse> handleExternalServiceException(
+        ExternalServiceException ex,
+        HttpServletRequest request) {
+    
+    String traceId = generateTraceId();
+    
+    log.error("External service error - TraceId: {} - Path: {} - Message: {}", 
+            traceId, request.getRequestURI(), ex.getMessage(), ex);
+    
+    ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.SERVICE_UNAVAILABLE.value())
+            .errorCode(ex.getErrorCode().getCode())
+            .message(ex.getMessage())
+            .details("Unable to communicate with external service")
+            .path(request.getRequestURI())
+            .traceId(traceId)
+            .build();
+    
+    return new ResponseEntity<>(errorResponse, HttpStatus.SERVICE_UNAVAILABLE);
+}
+
+@ExceptionHandler(org.springframework.web.client.HttpClientErrorException.class)
+public ResponseEntity<ErrorResponse> handleHttpClientErrorException(
+        org.springframework.web.client.HttpClientErrorException ex,
+        HttpServletRequest request) {
+    
+    String traceId = generateTraceId();
+    
+    log.warn("HTTP client error - TraceId: {} - Path: {} - Status: {} - Message: {}", 
+            traceId, request.getRequestURI(), ex.getStatusCode(), ex.getMessage());
+    
+    // Determinar el código de error según el status HTTP
+    ErrorCode errorCode;
+    String message;
+    
+    if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
+        errorCode = ErrorCode.EXTERNAL_SERVICE_ERROR;
+        message = "The requested resource was not found in the external service";
+    } else if (ex.getStatusCode().is4xxClientError()) {
+        errorCode = ErrorCode.INVALID_INPUT;
+        message = "Invalid request to external service";
+    } else {
+        errorCode = ErrorCode.SERVICE_UNAVAILABLE;
+        message = "External service returned an error";
+    }
+    
+    ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(ex.getStatusCode().value())
+            .errorCode(errorCode.getCode())
+            .message(message)
+            .details(ex.getStatusText())
+            .path(request.getRequestURI())
+            .traceId(traceId)
+            .build();
+    
+    return new ResponseEntity<>(errorResponse, ex.getStatusCode());
+}
+
+@ExceptionHandler(org.springframework.web.client.HttpServerErrorException.class)
+public ResponseEntity<ErrorResponse> handleHttpServerErrorException(
+        org.springframework.web.client.HttpServerErrorException ex,
+        HttpServletRequest request) {
+    
+    String traceId = generateTraceId();
+    
+    log.error("HTTP server error - TraceId: {} - Path: {} - Status: {}", 
+            traceId, request.getRequestURI(), ex.getStatusCode(), ex);
+    
+    ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.SERVICE_UNAVAILABLE.value())
+            .errorCode(ErrorCode.SERVICE_UNAVAILABLE.getCode())
+            .message("External service is temporarily unavailable")
+            .details(ex.getStatusText())
+            .path(request.getRequestURI())
+            .traceId(traceId)
+            .build();
+    
+    return new ResponseEntity<>(errorResponse, HttpStatus.SERVICE_UNAVAILABLE);
+}
+
+@ExceptionHandler(org.springframework.web.client.ResourceAccessException.class)
+public ResponseEntity<ErrorResponse> handleResourceAccessException(
+        org.springframework.web.client.ResourceAccessException ex,
+        HttpServletRequest request) {
+    
+    String traceId = generateTraceId();
+    
+    log.error("Resource access error - TraceId: {} - Path: {} - Message: {}", 
+            traceId, request.getRequestURI(), ex.getMessage(), ex);
+    
+    ErrorResponse errorResponse = ErrorResponse.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.SERVICE_UNAVAILABLE.value())
+            .errorCode(ErrorCode.SERVICE_UNAVAILABLE.getCode())
+            .message("Unable to connect to external service")
+            .details("The service might be down or unreachable")
+            .path(request.getRequestURI())
+            .traceId(traceId)
+            .build();
+    
+    return new ResponseEntity<>(errorResponse, HttpStatus.SERVICE_UNAVAILABLE);
+}
 }
 
 

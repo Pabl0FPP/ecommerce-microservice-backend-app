@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 public enum ErrorCode {
     INTERNAL_SERVER_ERROR("ERR_1000", "An unexpected error occurred"),
     SERVICE_UNAVAILABLE("ERR_1001", "Service temporarily unavailable"),
+    EXTERNAL_SERVICE_ERROR("ERR_1002", "External service communication failed: %s"),
 
     VALIDATION_ERROR("ERR_2000", "Validation failed for input data"),
     INVALID_INPUT("ERR_2001", "Invalid input provided"),
@@ -16,6 +17,7 @@ public enum ErrorCode {
 
     SHIPPING_NOT_FOUND("ERR_3000", "Shipping with id %s not found"),
     ORDER_NOT_FOUND("ERR_3001", "Order with id %s not found"),
+    PRODUCT_NOT_FOUND("ERR_3002", "Product with id %s not found"),
 
     DUPLICATE_RESOURCE("ERR_4003", "Resource already exists"),
 
@@ -29,14 +31,6 @@ public enum ErrorCode {
 
     private final String code;
     private final String message;
-
-    public String getCode() {
-        return code;
-    }
-
-    public String getMessage() {
-        return message;
-    }
 
     public String formatMessage(Object... args) {
         return String.format(message, args);
