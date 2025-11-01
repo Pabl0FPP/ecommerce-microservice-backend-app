@@ -65,4 +65,26 @@ public class OrderItemServiceImplTest {
         assertEquals(dto.getProductId(), result.getProductId());
         assertEquals(dto.getOrderId(), result.getOrderId());
     }
+
+    @Test
+    void update_existing_updatesAndReturns() {
+        OrderItemDto dto = OrderItemDto.builder().productId(7).orderId(11).orderedQuantity(2).build();
+        OrderItem entity = OrderItemMappingHelper.map(dto);
+        when(repo.existsById(OrderItemMappingHelper.toId(dto))).thenReturn(true);
+        when(repo.save(any(OrderItem.class))).thenReturn(entity);
+
+        var res = service.update(dto);
+        assertNotNull(res);
+        assertEquals(2, res.getOrderedQuantity());
+    }
+
+    @Test
+    void deleteById_callsRepository() {
+        OrderItemId id = new OrderItemId(7,11);
+        when(repo.existsById(id)).thenReturn(true);
+        doNothing().when(repo).deleteById(id);
+
+        assertDoesNotThrow(() -> service.deleteById(id));
+        verify(repo).deleteById(id);
+    }
 }
