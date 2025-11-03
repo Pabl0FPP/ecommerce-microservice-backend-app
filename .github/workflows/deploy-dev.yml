@@ -35,9 +35,9 @@ jobs:
 
       - name: Apply core manifests
         run: |
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/cloud-config-deployment.yaml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/eureka-deployment.yaml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/zipkin-deployment.yaml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/cloud-config-deployment.yml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/eureka-deployment.yml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/zipkin-deployment.yml
 
       - name: Wait core ready
         run: |
@@ -69,14 +69,14 @@ jobs:
 
       - name: Apply service manifests
         run: |
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/api-gateway-deployment.yaml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/user-deployment.yaml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/product-deployment.yaml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/order-deployment.yaml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/payment-deployment.yaml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/shipping-deployment.yaml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/favourite-deployment.yaml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/proxy-client-deployment.yaml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/api-gateway-deployment.yml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/user-deployment.yml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/product-deployment.yml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/order-deployment.yml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/payment-deployment.yml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/shipping-deployment.yml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/favourite-deployment.yml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/proxy-client-deployment.yml
 
       - name: Wait services ready
         shell: bash
