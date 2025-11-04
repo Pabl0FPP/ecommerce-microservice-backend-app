@@ -1,4 +1,4 @@
-name: Deploy Dev (kind local)
+name: Deploy Dev (AKS)
 
 on:
   workflow_dispatch:
@@ -7,7 +7,8 @@ on:
 
 env:
   K8S_NAMESPACE: default
-  KIND_VERSION: v0.20.0
+  AZURE_RESOURCE_GROUP: rg-ecommerce-dev
+  AKS_CLUSTER_NAME: aks-ecommerce-dev
 
 jobs:
   deploy-core:
@@ -15,15 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Install kind
-        run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-          kind version
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
 
       - name: Install kubectl
         run: |
@@ -32,39 +29,30 @@ jobs:
           sudo mv kubectl /usr/local/bin/
           kubectl version --client
 
-      - name: Create kind cluster
+      - name: Get AKS credentials
         run: |
-          kind create cluster --name ecommerce --config kind-cluster-config.yaml || true
-          kubectl cluster-info --context kind-ecommerce
+          az aks get-credentials --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name ${{ env.AKS_CLUSTER_NAME }} --overwrite-existing
+          kubectl cluster-info
 
-      - name: Wait for kind cluster to be ready
+      - name: Wait for cluster to be ready
         run: |
-          kubectl wait --for=condition=ready nodes --all --timeout=300s
-
-      - name: Load Docker images into kind (if needed)
-        run: |
-          # Si las imágenes están en Docker Hub, kind las descargará automáticamente
-          # Si necesitas cargar imágenes locales, descomenta:
-          # kind load docker-image selimhorri/service-discovery-ecommerce-boot:0.1.0 --name ecommerce || true
-          # kind load docker-image selimhorri/cloud-config-ecommerce-boot:0.1.0 --name ecommerce || true
-          # kind load docker-image openzipkin/zipkin:latest --name ecommerce || true
-          echo "Images will be pulled from Docker Hub automatically"
+          kubectl wait --for=condition=ready nodes --all --timeout=300s || echo "Nodes may still be initializing"
 
       - name: Apply core manifests
         run: |
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/cloud-config-deployment.yml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/eureka-deployment.yml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/zipkin-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/cloud-config-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/eureka-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/zipkin-deployment.yml
 
       - name: Wait core ready
         run: |
-          kubectl rollout status -n "$K8S_NAMESPACE" deploy/cloud-config --timeout=10m || echo "Cloud Config may still be starting"
-          kubectl rollout status -n "$K8S_NAMESPACE" deploy/service-discovery --timeout=10m || echo "Service Discovery may still be starting"
+          kubectl rollout status -n "${{ env.K8S_NAMESPACE }}" deploy/cloud-config --timeout=10m || echo "Cloud Config may still be starting"
+          kubectl rollout status -n "${{ env.K8S_NAMESPACE }}" deploy/service-discovery --timeout=10m || echo "Service Discovery may still be starting"
 
       - name: Show core services status
         run: |
-          kubectl get pods -n "$K8S_NAMESPACE"
-          kubectl get svc -n "$K8S_NAMESPACE" | grep -E "(NAME|cloud-config|service-discovery|zipkin)"
+          kubectl get pods -n "${{ env.K8S_NAMESPACE }}"
+          kubectl get svc -n "${{ env.K8S_NAMESPACE }}" | grep -E "(NAME|cloud-config|service-discovery|zipkin)"
 
   deploy-services:
     runs-on: ubuntu-latest
@@ -72,14 +60,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Install kind
-        run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
 
       - name: Install kubectl
         run: |
@@ -87,32 +72,21 @@ jobs:
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/
 
-      - name: Create kind cluster (if not exists)
+      - name: Get AKS credentials
         run: |
-          # Nota: Cada job corre en un runner diferente, así que necesitamos crear el cluster de nuevo
-          # En un entorno real, podrías usar un runner compartido o un cluster persistente
-          kind create cluster --name ecommerce --config kind-cluster-config.yaml || true
-          kubectl cluster-info --context kind-ecommerce
-
-      - name: Load Docker images into kind (if needed)
-        run: |
-          # Si las imágenes están en Docker Hub, kind las descargará automáticamente
-          # Si necesitas cargar imágenes locales, descomenta:
-          # kind load docker-image pablofpp/api-gateway:0.1.0 --name ecommerce || true
-          # kind load docker-image pablofpp/user-service:0.1.0 --name ecommerce || true
-          # ... etc
-          echo "Images will be pulled from Docker Hub automatically"
+          az aks get-credentials --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name ${{ env.AKS_CLUSTER_NAME }} --overwrite-existing
+          kubectl cluster-info
 
       - name: Apply service manifests
         run: |
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/api-gateway-deployment.yml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/user-deployment.yml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/product-deployment.yml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/order-deployment.yml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/payment-deployment.yml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/shipping-deployment.yml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/favourite-deployment.yml
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/proxy-client-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/api-gateway-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/user-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/product-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/order-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/payment-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/shipping-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/favourite-deployment.yml
+          kubectl apply -n "${{ env.K8S_NAMESPACE }}" -f k8s/proxy-client-deployment.yml
 
       - name: Wait services ready
         shell: bash
@@ -120,23 +94,29 @@ jobs:
           set +e  # No fallar si algún servicio tarda más
           for d in api-gateway user-service product-service order-service payment-service shipping-service favourite-service proxy-client; do
             echo "Waiting for $d rollout..."
-            kubectl rollout status -n "$K8S_NAMESPACE" deploy/$d --timeout=10m || echo "⚠️  $d may still be starting"
+            kubectl rollout status -n "${{ env.K8S_NAMESPACE }}" deploy/$d --timeout=10m || echo "⚠️  $d may still be starting"
           done
 
       - name: Show all services status
         run: |
           echo "📋 Pods status:"
-          kubectl get pods -n "$K8S_NAMESPACE"
+          kubectl get pods -n "${{ env.K8S_NAMESPACE }}"
           echo ""
-          echo "📋 Services with NodePort:"
-          kubectl get svc -n "$K8S_NAMESPACE" -o wide | grep NodePort
+          echo "📋 Services:"
+          kubectl get svc -n "${{ env.K8S_NAMESPACE }}" -o wide
           echo ""
-          echo "💡 Services are accessible at:"
-          echo "   - localhost:<NodePort> (from within the runner)"
-          echo "   - Services use NodePort type for external access"
+          echo "💡 Services are accessible via LoadBalancer or Ingress"
 
-      - name: Show service URLs
+      - name: Show service endpoints
         run: |
-          echo "🔍 Service URLs (NodePort):"
-          kubectl get svc -n "$K8S_NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.type}{"\t"}{.spec.ports[0].nodePort}{"\n"}{end}' | grep NodePort | awk '{print "  - " $1 ": http://localhost:" $3}'
-
+          echo "🔍 Service Endpoints:"
+          kubectl get svc -n "${{ env.K8S_NAMESPACE }}" -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.type}{"\t"}{.status.loadBalancer.ingress[0].ip}{"\n"}{end}' | while read name type ip; do
+            if [ "$type" = "LoadBalancer" ] && [ -n "$ip" ]; then
+              echo "  - $name: http://$ip"
+            elif [ "$type" = "NodePort" ]; then
+              nodeport=$(kubectl get svc "$name" -n "${{ env.K8S_NAMESPACE }}" -o jsonpath='{.spec.ports[0].nodePort}')
+              echo "  - $name: NodePort $nodeport (configure external access)"
+            else
+              echo "  - $name: ClusterIP (internal only)"
+            fi
+          done

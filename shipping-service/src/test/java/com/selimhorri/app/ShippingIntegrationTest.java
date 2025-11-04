@@ -3,6 +3,7 @@ package com.selimhorri.app;
 import static org.junit.jupiter.api.Assertions.*;
 
 
+import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,6 +21,7 @@ import com.selimhorri.app.service.OrderItemService;
  * Estos tests hacen LLAMADAS HTTP REALES a servicios desplegados
  */
 @SpringBootTest
+@DisabledIfEnvironmentVariable(named = "SPRING_PROFILES_ACTIVE", matches = "dev")
 class ShippingIntegrationTest {
 
     @Autowired

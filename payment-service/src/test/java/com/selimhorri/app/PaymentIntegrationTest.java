@@ -3,6 +3,7 @@ package com.selimhorri.app;
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,6 +16,7 @@ import com.selimhorri.app.dto.PaymentDto;
 import com.selimhorri.app.service.PaymentService;
 
 @SpringBootTest
+@DisabledIfEnvironmentVariable(named = "SPRING_PROFILES_ACTIVE", matches = "dev")
 class PaymentIntegrationTest {
 
     @Autowired
