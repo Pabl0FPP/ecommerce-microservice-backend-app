@@ -6,7 +6,7 @@ on:
     branches: [ develop ]
 
 env:
-  K8S_NAMESPACE: default
+  K8S_NAMESPACE: ecommerce
   AZURE_RESOURCE_GROUP: rg-ecommerce-dev
   AKS_CLUSTER_NAME: aks-ecommerce-dev
 
@@ -37,6 +37,10 @@ jobs:
       - name: Wait for cluster to be ready
         run: |
           kubectl wait --for=condition=ready nodes --all --timeout=300s || echo "Nodes may still be initializing"
+
+      - name: Create namespace
+        run: |
+          kubectl apply -f k8s/namespace.yml || kubectl create namespace ${{ env.K8S_NAMESPACE }} || echo "Namespace already exists"
 
       - name: Apply core manifests
         run: |
