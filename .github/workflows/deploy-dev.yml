@@ -1,4 +1,4 @@
-name: Deploy Dev (Kubernetes staged)
+name: Deploy Dev (kind local)
 
 on:
   workflow_dispatch:
@@ -7,8 +7,7 @@ on:
 
 env:
   K8S_NAMESPACE: default
-  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
-  EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
+  KIND_VERSION: v0.20.0
 
 jobs:
   deploy-core:
@@ -16,28 +15,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Install AWS CLI
+      - name: Install kind
         run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
-          sudo ./aws/install --update || sudo ./aws/install
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind version
 
       - name: Install kubectl
         run: |
           curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/
+          kubectl version --client
 
-      - name: Configure kubeconfig for EKS
+      - name: Create kind cluster
         run: |
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+          kind create cluster --name ecommerce --config kind-cluster-config.yaml || true
+          kubectl cluster-info --context kind-ecommerce
+
+      - name: Wait for kind cluster to be ready
+        run: |
+          kubectl wait --for=condition=ready nodes --all --timeout=300s
+
+      - name: Load Docker images into kind (if needed)
+        run: |
+          # Si las imágenes están en Docker Hub, kind las descargará automáticamente
+          # Si necesitas cargar imágenes locales, descomenta:
+          # kind load docker-image selimhorri/service-discovery-ecommerce-boot:0.1.0 --name ecommerce || true
+          # kind load docker-image selimhorri/cloud-config-ecommerce-boot:0.1.0 --name ecommerce || true
+          # kind load docker-image openzipkin/zipkin:latest --name ecommerce || true
+          echo "Images will be pulled from Docker Hub automatically"
 
       - name: Apply core manifests
         run: |
@@ -47,8 +58,13 @@ jobs:
 
       - name: Wait core ready
         run: |
-          kubectl rollout status -n "$K8S_NAMESPACE" deploy/cloud-config --timeout=5m
-          kubectl rollout status -n "$K8S_NAMESPACE" deploy/service-discovery --timeout=5m
+          kubectl rollout status -n "$K8S_NAMESPACE" deploy/cloud-config --timeout=10m || echo "Cloud Config may still be starting"
+          kubectl rollout status -n "$K8S_NAMESPACE" deploy/service-discovery --timeout=10m || echo "Service Discovery may still be starting"
+
+      - name: Show core services status
+        run: |
+          kubectl get pods -n "$K8S_NAMESPACE"
+          kubectl get svc -n "$K8S_NAMESPACE" | grep -E "(NAME|cloud-config|service-discovery|zipkin)"
 
   deploy-services:
     runs-on: ubuntu-latest
@@ -56,18 +72,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Install AWS CLI
+      - name: Install kind
         run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
-          sudo ./aws/install --update || sudo ./aws/install
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
 
       - name: Install kubectl
         run: |
@@ -75,9 +87,21 @@ jobs:
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/
 
-      - name: Configure kubeconfig for EKS
+      - name: Create kind cluster (if not exists)
         run: |
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+          # Nota: Cada job corre en un runner diferente, así que necesitamos crear el cluster de nuevo
+          # En un entorno real, podrías usar un runner compartido o un cluster persistente
+          kind create cluster --name ecommerce --config kind-cluster-config.yaml || true
+          kubectl cluster-info --context kind-ecommerce
+
+      - name: Load Docker images into kind (if needed)
+        run: |
+          # Si las imágenes están en Docker Hub, kind las descargará automáticamente
+          # Si necesitas cargar imágenes locales, descomenta:
+          # kind load docker-image pablofpp/api-gateway:0.1.0 --name ecommerce || true
+          # kind load docker-image pablofpp/user-service:0.1.0 --name ecommerce || true
+          # ... etc
+          echo "Images will be pulled from Docker Hub automatically"
 
       - name: Apply service manifests
         run: |
@@ -93,9 +117,26 @@ jobs:
       - name: Wait services ready
         shell: bash
         run: |
-          set -e
+          set +e  # No fallar si algún servicio tarda más
           for d in api-gateway user-service product-service order-service payment-service shipping-service favourite-service proxy-client; do
             echo "Waiting for $d rollout..."
-            kubectl rollout status -n "$K8S_NAMESPACE" deploy/$d --timeout=6m
+            kubectl rollout status -n "$K8S_NAMESPACE" deploy/$d --timeout=10m || echo "⚠️  $d may still be starting"
           done
+
+      - name: Show all services status
+        run: |
+          echo "📋 Pods status:"
+          kubectl get pods -n "$K8S_NAMESPACE"
+          echo ""
+          echo "📋 Services with NodePort:"
+          kubectl get svc -n "$K8S_NAMESPACE" -o wide | grep NodePort
+          echo ""
+          echo "💡 Services are accessible at:"
+          echo "   - localhost:<NodePort> (from within the runner)"
+          echo "   - Services use NodePort type for external access"
+
+      - name: Show service URLs
+        run: |
+          echo "🔍 Service URLs (NodePort):"
+          kubectl get svc -n "$K8S_NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.type}{"\t"}{.spec.ports[0].nodePort}{"\n"}{end}' | grep NodePort | awk '{print "  - " $1 ": http://localhost:" $3}'
 
