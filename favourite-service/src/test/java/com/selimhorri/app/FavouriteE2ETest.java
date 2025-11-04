@@ -39,7 +39,6 @@ class FavouriteE2ETest {
 
     @BeforeEach
     void setUp() {
-        // Configurar URLs de los servicios
         userServiceUrl = System.getProperty("user.service.url", 
             AppConstant.DiscoveredDomainsApi.USER_SERVICE_API_URL);
         productServiceUrl = System.getProperty("product.service.url", 
@@ -52,10 +51,7 @@ class FavouriteE2ETest {
      */
     @Test
     void testE2E_CompleteFavouriteFlow() {
-        // Arrange: Preparar datos de prueba
         String timestamp = String.valueOf(System.currentTimeMillis());
-
-        // Paso 1: Crear o verificar usuario
         UserDto userDto = UserDto.builder()
                 .firstName("Alice")
                 .lastName("Johnson")
@@ -77,7 +73,6 @@ class FavouriteE2ETest {
                 assertNotNull(user.getUserId(), "User should have an ID");
                 createdUser = user;
             } else {
-                // Si el servicio no está disponible, usar un usuario mock
                 createdUser = UserDto.builder()
                         .userId(1)
                         .firstName("Alice")
@@ -86,7 +81,6 @@ class FavouriteE2ETest {
                         .build();
             }
         } catch (Exception e) {
-            // Si el servicio no está disponible, usar un usuario mock
             createdUser = UserDto.builder()
                     .userId(1)
                     .firstName("Alice")
@@ -95,8 +89,6 @@ class FavouriteE2ETest {
                     .build();
         }
         final UserDto finalUser = createdUser;
-
-        // Paso 2: Obtener o crear productos
         ProductDto product1;
         ProductDto product2;
         try {
@@ -118,7 +110,6 @@ class FavouriteE2ETest {
                 product1 = p1;
                 product2 = p2;
             } else {
-                // Si no hay productos, usar productos mock
                 product1 = ProductDto.builder()
                         .productId(1)
                         .productTitle("Test Product 1")
@@ -133,7 +124,6 @@ class FavouriteE2ETest {
                         .build();
             }
         } catch (Exception e) {
-            // Si el servicio no está disponible, usar productos mock
             product1 = ProductDto.builder()
                     .productId(1)
                     .productTitle("Test Product 1")
@@ -153,7 +143,6 @@ class FavouriteE2ETest {
         assertNotNull(product1, "Product 1 should be available");
         assertNotNull(product2, "Product 2 should be available");
 
-        // Paso 3: Agregar primer producto a favoritos
         LocalDateTime likeDate1 = LocalDateTime.now();
         FavouriteDto favouriteDto1 = FavouriteDto.builder()
                 .userId(finalUser.getUserId())
@@ -168,7 +157,6 @@ class FavouriteE2ETest {
         assertEquals(finalProduct1.getProductId(), createdFavourite1.getProductId(), 
                 "Favourite should be linked to product");
 
-        // Paso 4: Agregar segundo producto a favoritos
         LocalDateTime likeDate2 = LocalDateTime.now().plusMinutes(1);
         FavouriteDto favouriteDto2 = FavouriteDto.builder()
                 .userId(finalUser.getUserId())
@@ -183,12 +171,9 @@ class FavouriteE2ETest {
         assertEquals(product2.getProductId(), createdFavourite2.getProductId(), 
                 "Second favourite should be linked to product");
 
-        // Paso 5: Verificar que se pueden recuperar todos los favoritos
         List<FavouriteDto> allFavourites = favouriteService.findAll();
         assertNotNull(allFavourites, "Favourites list should not be null");
         assertTrue(allFavourites.size() >= 2, "Should have at least 2 favourites");
-
-        // Verificar que los favoritos creados están en la lista
         boolean favourite1Found = allFavourites.stream()
                 .anyMatch(f -> f.getUserId().equals(finalUser.getUserId()) && 
                              f.getProductId().equals(finalProduct1.getProductId()));
@@ -199,7 +184,6 @@ class FavouriteE2ETest {
         assertTrue(favourite1Found, "First favourite should be in the list");
         assertTrue(favourite2Found, "Second favourite should be in the list");
 
-        // Paso 6: Recuperar un favorito específico por ID
         FavouriteId favouriteId1 = new FavouriteId(
                 finalUser.getUserId(),
                 finalProduct1.getProductId(),
@@ -212,7 +196,6 @@ class FavouriteE2ETest {
         assertEquals(finalProduct1.getProductId(), retrievedFavourite.getProductId(), 
                 "Retrieved favourite should have correct product ID");
 
-        // Paso 7: Eliminar un favorito
         FavouriteId favouriteId2 = new FavouriteId(
                 finalUser.getUserId(),
                 finalProduct2.getProductId(),
@@ -225,14 +208,11 @@ class FavouriteE2ETest {
             favouriteService.findById(favouriteId2);
             fail("Favourite should have been deleted");
         } catch (com.selimhorri.app.exception.custom.ResourceNotFoundException e) {
-            // Esperado - el favorito fue eliminado
             assertTrue(e.getMessage().contains("Favourite") || 
                       e.getMessage().contains("favourite") || 
                       e.getMessage().contains("not found"),
                       "Exception should indicate favourite not found");
         }
-
-        // Assert: Verificar flujo completo
         assertNotNull(finalUser.getUserId(), "User should exist");
         assertNotNull(createdFavourite1, "First favourite should exist");
         assertTrue(allFavourites.size() > 0, "Should have favourites");
@@ -244,10 +224,7 @@ class FavouriteE2ETest {
      */
     @Test
     void testE2E_MultipleFavouritesFlow() {
-        // Arrange: Preparar datos
         String timestamp = String.valueOf(System.currentTimeMillis());
-
-        // Paso 1: Crear o verificar usuario
         UserDto userDto = UserDto.builder()
                 .firstName("Bob")
                 .lastName("Wilson")
@@ -286,7 +263,6 @@ class FavouriteE2ETest {
                 System.arraycopy(retrievedProducts, 0, products, 0, 3);
             }
         } catch (Exception e) {
-            // Usar productos mock
             for (int i = 0; i < 3; i++) {
                 products[i] = ProductDto.builder()
                         .productId(i + 1)
@@ -296,8 +272,6 @@ class FavouriteE2ETest {
                         .build();
             }
         }
-
-        // Paso 3: Agregar todos los productos a favoritos
         FavouriteDto[] createdFavourites = new FavouriteDto[3];
         for (int i = 0; i < 3; i++) {
             final int index = i;
@@ -316,12 +290,9 @@ class FavouriteE2ETest {
                     "Favourite " + (index + 1) + " should be linked to product");
         }
 
-        // Paso 4: Verificar que todos los favoritos están en la lista
         List<FavouriteDto> allFavourites = favouriteService.findAll();
         assertNotNull(allFavourites, "Favourites list should not be null");
         assertTrue(allFavourites.size() >= 3, "Should have at least 3 favourites");
-
-        // Verificar que todos los favoritos creados están en la lista
         for (int i = 0; i < 3; i++) {
             final int index = i;
             boolean found = allFavourites.stream()
@@ -329,8 +300,6 @@ class FavouriteE2ETest {
                                  f.getProductId().equals(products[index].getProductId()));
             assertTrue(found, "Favourite " + (i + 1) + " should be in the list");
         }
-
-        // Assert: Verificar flujo completo
         assertEquals(3, createdFavourites.length, "Should have created 3 favourites");
         assertTrue(allFavourites.size() >= 3, "Should have at least 3 favourites in list");
     }
@@ -341,26 +310,19 @@ class FavouriteE2ETest {
      */
     @Test
     void testE2E_UpdateFavouriteFlow() {
-        // Arrange: Preparar datos
         String timestamp = String.valueOf(System.currentTimeMillis());
-
-        // Paso 1: Crear o verificar usuario
         UserDto createdUser = UserDto.builder()
                 .userId(1)
                 .firstName("Charlie")
                 .lastName("Brown")
                 .email("charlie.brown" + timestamp + "@example.com")
                 .build();
-
-        // Paso 2: Obtener o crear producto
         ProductDto product = ProductDto.builder()
                 .productId(1)
                 .productTitle("Test Product")
                 .priceUnit(99.99)
                 .quantity(10)
                 .build();
-
-        // Paso 3: Agregar producto a favoritos
         LocalDateTime likeDate = LocalDateTime.now();
         FavouriteDto favouriteDto = FavouriteDto.builder()
                 .userId(createdUser.getUserId())
@@ -371,7 +333,6 @@ class FavouriteE2ETest {
         FavouriteDto createdFavourite = favouriteService.save(favouriteDto);
         assertNotNull(createdFavourite, "Favourite should be created");
 
-        // Paso 4: Actualizar favorito (usar un nuevo likeDate)
         LocalDateTime updatedLikeDate = LocalDateTime.now().plusMinutes(5);
         FavouriteDto updatedFavouriteDto = FavouriteDto.builder()
                 .userId(createdUser.getUserId())
@@ -386,7 +347,6 @@ class FavouriteE2ETest {
         assertEquals(product.getProductId(), updatedFavourite.getProductId(), 
                 "Updated favourite should have correct product ID");
 
-        // Assert: Verificar flujo completo
         assertNotNull(createdFavourite, "Favourite should exist");
         assertNotNull(updatedFavourite, "Favourite should be updated");
     }
@@ -409,7 +369,6 @@ class FavouriteE2ETest {
         FavouriteDto saved = favouriteService.save(fav);
         assertNotNull(saved);
 
-        // Segundo intento debe lanzar DuplicateResourceException
         assertThrows(com.selimhorri.app.exception.custom.DuplicateResourceException.class,
                 () -> favouriteService.save(fav));
     }

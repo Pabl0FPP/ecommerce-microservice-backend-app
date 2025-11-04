@@ -32,45 +32,28 @@ class UserIntegrationTest {
 
     @Test
     void testUserFavouriteIntegration_CanBeCalledByFavouriteService() {
-        // Test de integración REAL - User Service puede ser llamado por Favourite Service
-        // Cuando los servicios estén desplegados, este test validará la comunicación real
         try {
-            // Act: Hacer llamada HTTP REAL al User Service (usando URL del servicio desplegado)
             String url = AppConstant.DiscoveredDomainsApi.USER_SERVICE_API_URL + "/1";
             UserDto userDto = restTemplate.getForObject(url, UserDto.class);
-            
-            // Assert: Verificar que el servicio responde correctamente
             assertNotNull(userDto, "User Service should respond to HTTP calls");
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
-            // Esto es esperado si el usuario no existe - el servicio responde correctamente
-            // En integración real, esto valida que la comunicación HTTP funciona
             assertEquals(404, e.getRawStatusCode(), "User Service should return 404 for non-existent user");
         } catch (org.springframework.web.client.ResourceAccessException e) {
-            // Si el servicio no está disponible, el test falla (esperado si no está desplegado)
-            // Pero en este caso, el servicio está corriendo, así que esto es un error
             fail("User Service HTTP connection failed: " + e.getMessage());
         } catch (Exception e) {
-            // Otras excepciones también son válidas
             assertNotNull(e.getMessage(), "Exception should have a message");
         }
     }
 
     @Test
     void testUserOrderIntegration_CanBeCalledByOrderService() {
-        // Test de integración REAL - User Service puede ser llamado por Order Service
         try {
-            // Act: Hacer llamada HTTP REAL al User Service
             String url = AppConstant.DiscoveredDomainsApi.USER_SERVICE_API_URL + "/2";
             UserDto userDto = restTemplate.getForObject(url, UserDto.class);
-            
-            // Assert: Verificar que el servicio responde correctamente
             assertNotNull(userDto, "User Service should respond to HTTP calls from Order Service");
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
-            // Esto es esperado si el usuario no existe - el servicio responde correctamente
-            // En integración real, esto valida que la comunicación HTTP funciona
             assertEquals(404, e.getRawStatusCode(), "User Service should return 404 for non-existent user");
         } catch (org.springframework.web.client.ResourceAccessException e) {
-            // Si el servicio no está disponible, el test falla
             fail("User Service HTTP connection failed: " + e.getMessage());
         } catch (Exception e) {
             assertNotNull(e.getMessage(), "Exception should have a message");
@@ -79,8 +62,6 @@ class UserIntegrationTest {
 
     @Test
     void testUserCredentialIntegration_ShouldWork() {
-        // Test de integración con Credential (interno)
-        // Arrange: Crear un usuario con credenciales
         UserDto userDto = UserDto.builder()
                 .firstName("John")
                 .lastName("Doe")
@@ -90,11 +71,7 @@ class UserIntegrationTest {
                         .password("password123")
                         .build())
                 .build();
-
-        // Act: Guardar el usuario
         UserDto savedUser = userService.save(userDto);
-        
-        // Assert: Verificar que la integración funcionó
         assertNotNull(savedUser, "User should be saved");
         assertNotNull(savedUser.getCredentialDto(), "User should have credential");
         assertNotNull(savedUser.getUserId(), "User should have an ID");
@@ -102,7 +79,6 @@ class UserIntegrationTest {
 
     @Test
     void testUserCredentialIntegration_DuplicateUsername_ShouldThrowException() {
-        // Arrange: Crear un usuario con username
         String username = "testuser" + System.currentTimeMillis();
         UserDto firstUser = UserDto.builder()
                 .firstName("John")
@@ -114,8 +90,6 @@ class UserIntegrationTest {
                         .build())
                 .build();
         userService.save(firstUser);
-
-        // Act & Assert: Intentar crear otro usuario con el mismo username
         UserDto secondUser = UserDto.builder()
                 .firstName("Jane")
                 .lastName("Doe")

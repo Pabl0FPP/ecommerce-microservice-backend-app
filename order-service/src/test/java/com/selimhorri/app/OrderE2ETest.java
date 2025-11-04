@@ -43,7 +43,6 @@ class OrderE2ETest {
 
     @BeforeEach
     void setUp() {
-        // Configurar URLs de los servicios (usando las constantes o URLs reales si están desplegados)
         userServiceUrl = System.getProperty("user.service.url", 
             AppConstant.DiscoveredDomainsApi.USER_SERVICE_API_URL);
         productServiceUrl = System.getProperty("product.service.url", 
@@ -58,7 +57,6 @@ class OrderE2ETest {
      */
     @Test
     void testE2E_CompletePurchaseFlow() {
-        // Arrange: Preparar datos de prueba
         String timestamp = String.valueOf(System.currentTimeMillis());
         
         // Paso 1: Crear o verificar usuario
@@ -83,7 +81,6 @@ class OrderE2ETest {
                 assertNotNull(createdUser.getUserId(), "User should have an ID");
             }
         } catch (Exception e) {
-            // Si el servicio no está disponible, usar un usuario mock
             createdUser = UserDto.builder()
                     .userId(1)
                     .firstName("John")
@@ -106,7 +103,6 @@ class OrderE2ETest {
                 product1 = products[0];
             }
         } catch (Exception e) {
-            // Si el servicio no está disponible, usar producto mock simple
             product1 = new Object(); // Mock simple
         }
 
@@ -152,8 +148,6 @@ class OrderE2ETest {
                 paymentResponse.getStatusCode() == HttpStatus.OK) {
                 Object createdPayment = paymentResponse.getBody();
                 assertNotNull(createdPayment, "Payment should be created");
-                
-                // Intentar actualizar estado del pago (si el servicio está disponible)
                 try {
                     restTemplate.exchange(
                         paymentServiceUrl + "/1",
@@ -162,15 +156,11 @@ class OrderE2ETest {
                         Object.class
                     );
                 } catch (Exception ex) {
-                    // Si falla, continuar
                 }
             }
         } catch (Exception e) {
-            // Si el servicio de pago no está disponible, continuar sin validar
             System.out.println("Payment service not available for E2E test: " + e.getMessage());
         }
-
-        // Assert: Verificar que el flujo completo se completó
         assertNotNull(createdUser, "User should be created");
         assertNotNull(createdOrder, "Order should be created");
         assertNotNull(cart.getCartId(), "Cart should be created");
@@ -182,7 +172,6 @@ class OrderE2ETest {
      */
     @Test
     void testE2E_CartToOrderFlow() {
-        // Arrange: Preparar datos
         Integer userId = 1;
         String timestamp = String.valueOf(System.currentTimeMillis());
 
@@ -205,11 +194,9 @@ class OrderE2ETest {
                 createdUser = userResponse.getBody();
             }
         } catch (Exception e) {
-            // Usar usuario mock si el servicio no está disponible
             createdUser = UserDto.builder().userId(userId).build();
         }
 
-        // Paso 2: Crear carrito
         Cart cart = Cart.builder()
                 .userId(createdUser != null ? createdUser.getUserId() : userId)
                 .isActive(true)
@@ -217,7 +204,6 @@ class OrderE2ETest {
         cart = cartRepository.save(cart);
         assertNotNull(cart.getCartId(), "Cart should be created");
 
-        // Paso 3: Crear orden desde el carrito
         OrderDto orderDto = OrderDto.builder()
                 .cartDto(CartDto.builder().cartId(cart.getCartId()).build())
                 .orderDesc("Cart to Order E2E Test")
@@ -230,7 +216,6 @@ class OrderE2ETest {
         assertEquals(cart.getCartId(), createdOrder.getCartDto().getCartId(), 
                 "Order should be linked to cart");
 
-        // Paso 4: Actualizar estado de la orden
         OrderDto updatedOrder = orderService.updateStatus(createdOrder.getOrderId());
         assertNotNull(updatedOrder, "Order status should be updated");
         assertNotNull(updatedOrder.getOrderStatus(), "Order should have a status");
@@ -238,7 +223,6 @@ class OrderE2ETest {
                 updatedOrder.getOrderStatus(), 
                 "Order status should change from CREATED");
 
-        // Paso 5: Verificar que la orden actualizada se puede recuperar
         OrderDto retrievedOrder = orderService.findById(createdOrder.getOrderId());
         assertNotNull(retrievedOrder, "Order should be retrievable");
         assertEquals(createdOrder.getOrderId(), retrievedOrder.getOrderId(), 
@@ -246,7 +230,6 @@ class OrderE2ETest {
         assertEquals(updatedOrder.getOrderStatus(), retrievedOrder.getOrderStatus(), 
                 "Order status should be updated");
 
-        // Assert: Verificar flujo completo
         assertNotNull(cart.getCartId(), "Cart should exist");
         assertNotNull(createdOrder.getOrderId(), "Order should exist");
         assertNotNull(updatedOrder.getOrderStatus(), "Order status should be updated");
@@ -258,10 +241,8 @@ class OrderE2ETest {
      */
     @Test
     void testE2E_MultipleOrdersFlow() {
-        // Arrange: Preparar datos
         Integer userId = 1;
 
-        // Paso 1: Crear múltiples carritos
         Cart cart1 = Cart.builder()
                 .userId(userId)
                 .isActive(true)
@@ -278,7 +259,6 @@ class OrderE2ETest {
         assertNotNull(cart2.getCartId(), "Second cart should be created");
         assertNotEquals(cart1.getCartId(), cart2.getCartId(), "Carts should be different");
 
-        // Paso 2: Crear múltiples órdenes
         OrderDto order1 = OrderDto.builder()
                 .cartDto(CartDto.builder().cartId(cart1.getCartId()).build())
                 .orderDesc("First E2E Order")
@@ -299,12 +279,10 @@ class OrderE2ETest {
         assertNotEquals(createdOrder1.getOrderId(), createdOrder2.getOrderId(), 
                 "Orders should have different IDs");
 
-        // Paso 3: Verificar que todas las órdenes se pueden recuperar
         var allOrders = orderService.findAll();
         assertNotNull(allOrders, "Orders list should not be null");
         assertTrue(allOrders.size() >= 2, "Should have at least 2 orders");
 
-        // Verificar que las órdenes creadas están en la lista
         boolean order1Found = allOrders.stream()
                 .anyMatch(o -> o.getOrderId().equals(createdOrder1.getOrderId()));
         boolean order2Found = allOrders.stream()
@@ -313,7 +291,6 @@ class OrderE2ETest {
         assertTrue(order1Found, "First order should be in the list");
         assertTrue(order2Found, "Second order should be in the list");
 
-        // Assert: Verificar flujo completo
         assertEquals(2, allOrders.stream()
                 .filter(o -> o.getOrderId().equals(createdOrder1.getOrderId()) || 
                            o.getOrderId().equals(createdOrder2.getOrderId()))
@@ -347,7 +324,6 @@ class OrderE2ETest {
      */
     @Test
     void testE2E_ListActiveOrders_ShouldContainRecentlyCreated() {
-        // Crear cart y orden
         Cart cart = Cart.builder()
                 .userId(777)
                 .isActive(true)

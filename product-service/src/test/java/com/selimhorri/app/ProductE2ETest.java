@@ -40,19 +40,13 @@ class ProductE2ETest {
     }
 
 
-    /**
-     * Test E2E: Flujo completo de gestión de productos
-     * Crear producto → Actualizar producto → Eliminar producto
-     */
+    /** E2E: crear, actualizar y eliminar un producto. */
     @Test
     void testE2E_CompleteProductManagementFlow() {
-        // Arrange: Preparar datos de prueba
         String timestamp = String.valueOf(System.currentTimeMillis());
 
-        // Paso 1: Obtener o crear una categoría válida (con categoryId)
         CategoryDto categoryDto = getAnyExistingCategoryOrCreate("E2E Test Category");
 
-        // Paso 2: Crear producto
         ProductDto productDto = ProductDto.builder()
                 .productTitle("E2E Test Product " + timestamp)
                 .imageUrl("https://example.com/product.jpg")
@@ -72,7 +66,6 @@ class ProductE2ETest {
         assertEquals(productDto.getQuantity(), createdProduct.getQuantity(), 
                 "Product quantity should match");
 
-        // Paso 3: Verificar que el producto se puede recuperar
         ProductDto retrievedProduct = productService.findById(createdProduct.getProductId());
         assertNotNull(retrievedProduct, "Product should be retrievable");
         assertEquals(createdProduct.getProductId(), retrievedProduct.getProductId(), 
@@ -80,7 +73,6 @@ class ProductE2ETest {
         assertEquals(createdProduct.getProductTitle(), retrievedProduct.getProductTitle(), 
                 "Product titles should match");
 
-        // Paso 4: Actualizar producto
         ProductDto updateDto = ProductDto.builder()
                 .productId(createdProduct.getProductId())
                 .productTitle("Updated E2E Test Product " + timestamp)
@@ -102,7 +94,6 @@ class ProductE2ETest {
         assertEquals(updateDto.getQuantity(), updatedProduct.getQuantity(), 
                 "Product quantity should be updated");
 
-        // Paso 5: Verificar que la actualización se reflejó
         ProductDto reRetrievedProduct = productService.findById(createdProduct.getProductId());
         assertNotNull(reRetrievedProduct, "Product should still be retrievable");
         assertEquals(updateDto.getProductTitle(), reRetrievedProduct.getProductTitle(), 
@@ -110,36 +101,27 @@ class ProductE2ETest {
         assertEquals(updateDto.getPriceUnit(), reRetrievedProduct.getPriceUnit(), 
                 "Product price should be updated in database");
 
-        // Paso 6: Eliminar producto
         productService.deleteById(createdProduct.getProductId());
 
-        // Verificar que el producto fue eliminado
         try {
             productService.findById(createdProduct.getProductId());
             fail("Product should have been deleted");
         } catch (com.selimhorri.app.exception.custom.ResourceNotFoundException e) {
-            // Esperado - el producto fue eliminado
             assertTrue(e.getMessage().contains("Product") || 
                       e.getMessage().contains("product") || 
                       e.getMessage().contains("not found"),
                       "Exception should indicate product not found");
         }
 
-        // Assert: Verificar flujo completo
         assertNotNull(createdProduct.getProductId(), "Product should have been created");
         assertNotNull(updatedProduct.getProductId(), "Product should have been updated");
     }
 
-    /**
-     * Test E2E: Flujo de búsqueda y listado de productos
-     * Crear múltiples productos → Listar todos → Buscar por ID
-     */
+    /** E2E: crear varios, listar y buscar por id. */
     @Test
     void testE2E_ProductSearchAndListingFlow() {
-        // Arrange: Preparar datos
         String timestamp = String.valueOf(System.currentTimeMillis());
 
-        // Paso 1: Crear múltiples productos
         ProductDto[] createdProducts = new ProductDto[3];
         CategoryDto categoryDto = getAnyExistingCategoryOrCreate("E2E Test Category");
 
@@ -159,12 +141,10 @@ class ProductE2ETest {
                     "Product " + (i + 1) + " should have an ID");
         }
 
-        // Paso 2: Listar todos los productos
         List<ProductDto> allProducts = productService.findAll();
         assertNotNull(allProducts, "Products list should not be null");
         assertTrue(allProducts.size() >= 3, "Should have at least 3 products");
 
-        // Verificar que los productos creados están en la lista
         for (int i = 0; i < 3; i++) {
             final int index = i;
             boolean found = allProducts.stream()
@@ -172,7 +152,6 @@ class ProductE2ETest {
             assertTrue(found, "Product " + (i + 1) + " should be in the list");
         }
 
-        // Paso 3: Buscar cada producto por ID
         for (int i = 0; i < 3; i++) {
             ProductDto foundProduct = productService.findById(createdProducts[i].getProductId());
             assertNotNull(foundProduct, "Product " + (i + 1) + " should be found by ID");
@@ -182,21 +161,15 @@ class ProductE2ETest {
                     "Product titles should match");
         }
 
-        // Assert: Verificar flujo completo
         assertEquals(3, createdProducts.length, "Should have created 3 products");
         assertTrue(allProducts.size() >= 3, "Should have at least 3 products in list");
     }
 
-    /**
-     * Test E2E: Flujo de actualización parcial de producto
-     * Crear producto → Actualizar solo precio → Actualizar solo cantidad
-     */
+    /** E2E: actualizaciones parciales de precio y cantidad. */
     @Test
     void testE2E_PartialProductUpdateFlow() {
-        // Arrange: Preparar datos
         String timestamp = String.valueOf(System.currentTimeMillis());
 
-        // Paso 1: Obtener o crear categoría válida
         CategoryDto categoryDto = getAnyExistingCategoryOrCreate("E2E Test Category");
 
         ProductDto productDto = ProductDto.builder()
@@ -213,7 +186,6 @@ class ProductE2ETest {
         Double originalPrice = createdProduct.getPriceUnit();
         Integer originalQuantity = createdProduct.getQuantity();
 
-        // Paso 2: Actualizar solo el precio
         ProductDto priceUpdateDto = ProductDto.builder()
                 .productId(createdProduct.getProductId())
                 .productTitle(createdProduct.getProductTitle())
@@ -233,7 +205,6 @@ class ProductE2ETest {
         assertEquals(originalQuantity, priceUpdatedProduct.getQuantity(), 
                 "Product quantity should remain the same");
 
-        // Paso 3: Actualizar solo la cantidad
         ProductDto quantityUpdateDto = ProductDto.builder()
                 .productId(createdProduct.getProductId())
                 .productTitle(createdProduct.getProductTitle())
@@ -253,7 +224,6 @@ class ProductE2ETest {
         assertEquals(25, quantityUpdatedProduct.getQuantity(), 
                 "Product quantity should be updated");
 
-        // Paso 4: Verificar que todas las actualizaciones se reflejaron
         ProductDto finalProduct = productService.findById(createdProduct.getProductId());
         assertNotNull(finalProduct, "Product should still be retrievable");
         assertEquals(149.99, finalProduct.getPriceUnit(), 
@@ -261,26 +231,19 @@ class ProductE2ETest {
         assertEquals(25, finalProduct.getQuantity(), 
                 "Product quantity should be updated in database");
 
-        // Assert: Verificar flujo completo
         assertNotEquals(originalPrice, finalProduct.getPriceUnit(), 
                 "Price should have been updated");
         assertNotEquals(originalQuantity, finalProduct.getQuantity(), 
                 "Quantity should have been updated");
     }
 
-    /**
-     * Test E2E: Flujo de creación de producto con categoría
-     * Crear categoría → Crear producto con categoría → Verificar categoría
-     */
+    /** E2E: crear con categoría y actualizar categoría. */
     @Test
     void testE2E_ProductWithCategoryFlow() {
-        // Arrange: Preparar datos
         String timestamp = String.valueOf(System.currentTimeMillis());
 
-        // Paso 1: Obtener o crear categoría válida
         CategoryDto categoryDto = getAnyExistingCategoryOrCreate("E2E Test Category " + timestamp);
 
-        // Paso 2: Crear producto con categoría
         ProductDto productDto = ProductDto.builder()
                 .productTitle("E2E Test Product with Category " + timestamp)
                 .imageUrl("https://example.com/product.jpg")
@@ -297,7 +260,6 @@ class ProductE2ETest {
                 createdProduct.getCategoryDto().getCategoryTitle(), 
                 "Category title should match");
 
-        // Paso 3: Verificar que el producto mantiene la categoría al recuperarlo
         ProductDto retrievedProduct = productService.findById(createdProduct.getProductId());
         assertNotNull(retrievedProduct, "Product should be retrievable");
         assertNotNull(retrievedProduct.getCategoryDto(), "Product should still have a category");
@@ -305,7 +267,6 @@ class ProductE2ETest {
                 retrievedProduct.getCategoryDto().getCategoryTitle(), 
                 "Category title should match after retrieval");
 
-        // Paso 4: Actualizar producto con nueva categoría (existente o creada)
         CategoryDto newCategoryDto = getAnyExistingCategoryOrCreate("E2E Test New Category " + timestamp);
 
         ProductDto updateDto = ProductDto.builder()
@@ -325,7 +286,6 @@ class ProductE2ETest {
                 updatedProduct.getCategoryDto().getCategoryTitle(), 
                 "Category title should be updated");
 
-        // Assert: Verificar flujo completo
         assertNotNull(createdProduct.getCategoryDto(), "Product should have category");
         assertNotNull(updatedProduct.getCategoryDto(), "Product should have updated category");
     }

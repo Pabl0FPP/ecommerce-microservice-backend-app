@@ -26,7 +26,6 @@ class ShippingE2ETest {
 
     @Test
     void testE2E_SaveMissingFields_ShouldFail() {
-        // Falta orderId y/o productId
         OrderItemDto dto = OrderItemDto.builder()
                 .orderedQuantity(1)
                 .build();
