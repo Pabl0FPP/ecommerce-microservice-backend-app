@@ -3,7 +3,7 @@
 # Script para ejecutar pruebas de microservicios
 # Uso: ./run-tests.sh [unit|integration|e2e|all]
 
-set -e
+# No usar set -e para poder manejar errores manualmente y mostrar información
 
 # Colores para output
 RED='\033[0;31m'
@@ -37,24 +37,67 @@ run_unit_tests() {
     # Ejecutar pruebas unitarias (excluyendo IntegrationTest y E2ETest)
     # Ejecutamos cada servicio por separado para mejor control
     local failed_services=()
+    local temp_log_dir=$(mktemp -d)
     
     for service in payment-service favourite-service shipping-service order-service product-service user-service; do
-        print_info "Ejecutando pruebas unitarias en $service..."
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        print_info "🔍 Ejecutando pruebas unitarias en $service..."
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        
+        local log_file="${temp_log_dir}/${service}_unit_test.log"
+        
+        # Ejecutar tests y mostrar salida en tiempo real
         ./mvnw test \
             -Dtest="*ServiceImplTest,*HelperTest,*UtilTest" \
             -DfailIfNoTests=false \
-            -pl $service
+            -pl $service 2>&1 | tee "$log_file"
         
-        if [ $? -ne 0 ]; then
+        local test_result=$?
+        
+        if [ $test_result -eq 0 ]; then
+            print_success "✅ Tests unitarios pasaron en $service"
+        else
+            print_error "❌ Tests unitarios fallaron en $service"
             failed_services+=($service)
+            
+            # Mostrar resumen de errores
+            echo ""
+            print_error "📋 Resumen de errores en $service:"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            # Extraer y mostrar errores específicos
+            if grep -q "ERROR" "$log_file"; then
+                echo ""
+                print_error "Errores encontrados:"
+                grep -A 5 "ERROR" "$log_file" | head -20
+            fi
+            
+            # Mostrar tests que fallaron
+            if grep -q "Tests run:" "$log_file"; then
+                echo ""
+                print_error "Resultados de tests:"
+                grep "Tests run:" "$log_file"
+            fi
+            
+            # Mostrar ubicación del log completo
+            echo ""
+            print_info "📄 Log completo guardado en: $log_file"
         fi
     done
     
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
     if [ ${#failed_services[@]} -eq 0 ]; then
         print_success "Pruebas unitarias completadas exitosamente"
+        rm -rf "$temp_log_dir"
         return 0
     else
         print_error "Las pruebas unitarias fallaron en: ${failed_services[*]}"
+        echo ""
+        print_info "📁 Logs de errores guardados en: $temp_log_dir"
         return 1
     fi
 }
@@ -86,27 +129,69 @@ run_integration_tests() {
         "payment-service"  # 6. Necesita Order
     )
     
+    local temp_log_dir=$(mktemp -d)
+    
     for service in "${services_in_order[@]}"; do
-        print_info "Ejecutando pruebas de integración en $service..."
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        print_info "🔍 Ejecutando pruebas de integración en $service..."
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        
+        local log_file="${temp_log_dir}/${service}_integration_test.log"
+        
+        # Ejecutar tests y mostrar salida en tiempo real
         ./mvnw test \
             -Dtest="*IntegrationTest" \
             -DfailIfNoTests=false \
-            -pl $service
+            -pl $service 2>&1 | tee "$log_file"
         
-        if [ $? -ne 0 ]; then
-            failed_services+=($service)
-            print_warning "Tests fallaron en $service - los siguientes servicios pueden verse afectados"
+        local test_result=$?
+        
+        if [ $test_result -eq 0 ]; then
+            print_success "✅ Tests de integración pasaron en $service"
         else
-            print_success "Tests pasaron en $service"
+            print_error "❌ Tests de integración fallaron en $service"
+            failed_services+=($service)
+            print_warning "⚠️  Tests fallaron en $service - los siguientes servicios pueden verse afectados"
+            
+            # Mostrar resumen de errores
+            echo ""
+            print_error "📋 Resumen de errores en $service:"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            # Extraer y mostrar errores específicos
+            if grep -q "ERROR" "$log_file"; then
+                echo ""
+                print_error "Errores encontrados:"
+                grep -A 5 "ERROR" "$log_file" | head -20
+            fi
+            
+            # Mostrar tests que fallaron
+            if grep -q "Tests run:" "$log_file"; then
+                echo ""
+                print_error "Resultados de tests:"
+                grep "Tests run:" "$log_file"
+            fi
+            
+            # Mostrar ubicación del log completo
+            echo ""
+            print_info "📄 Log completo guardado en: $log_file"
         fi
         echo ""
     done
     
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
     if [ ${#failed_services[@]} -eq 0 ]; then
         print_success "Pruebas de integración completadas exitosamente"
+        rm -rf "$temp_log_dir"
         return 0
     else
         print_error "Las pruebas de integración fallaron en: ${failed_services[*]}"
+        echo ""
+        print_info "📁 Logs de errores guardados en: $temp_log_dir"
+        print_info "   Revisa los archivos de log para más detalles sobre los fallos"
         return 1
     fi
 }
@@ -120,37 +205,83 @@ run_e2e_tests() {
     # Ejecutar pruebas E2E (cuando estén implementadas)
     local failed_services=()
     local no_tests=()
+    local temp_log_dir=$(mktemp -d)
     
     for service in payment-service favourite-service shipping-service order-service product-service user-service; do
-        print_info "Ejecutando pruebas E2E en $service..."
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        print_info "🔍 Ejecutando pruebas E2E en $service..."
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        
+        local log_file="${temp_log_dir}/${service}_e2e_test.log"
+        
+        # Ejecutar tests y capturar toda la salida
         ./mvnw test \
             -Dtest="*E2ETest" \
             -DfailIfNoTests=false \
-            -pl $service 2>&1 | grep -q "No tests were found"
+            -pl $service 2>&1 | tee "$log_file"
         
-        if [ $? -eq 0 ]; then
-            print_warning "No hay pruebas E2E implementadas en $service"
+        local test_result=$?
+        
+        # Verificar si hay tests
+        if grep -q "No tests were found" "$log_file"; then
+            print_warning "⚠️  No hay pruebas E2E implementadas en $service"
             no_tests+=($service)
+        elif [ $test_result -eq 0 ]; then
+            print_success "✅ Tests E2E pasaron en $service"
         else
-            ./mvnw test \
-                -Dtest="*E2ETest" \
-                -DfailIfNoTests=false \
-                -pl $service
+            print_error "❌ Tests E2E fallaron en $service"
+            failed_services+=($service)
             
-            if [ $? -ne 0 ]; then
-                failed_services+=($service)
+            # Mostrar resumen de errores
+            echo ""
+            print_error "📋 Resumen de errores en $service:"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            # Extraer y mostrar errores específicos
+            if grep -q "ERROR" "$log_file"; then
+                echo ""
+                print_error "Errores encontrados:"
+                grep -A 5 "ERROR" "$log_file" | head -20
             fi
+            
+            # Mostrar tests que fallaron
+            if grep -q "Tests run:" "$log_file"; then
+                echo ""
+                print_error "Resultados de tests:"
+                grep "Tests run:" "$log_file"
+            fi
+            
+            # Mostrar ubicación del log completo
+            echo ""
+            print_info "📄 Log completo guardado en: $log_file"
+            echo ""
         fi
     done
     
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
     if [ ${#failed_services[@]} -eq 0 ] && [ ${#no_tests[@]} -eq 6 ]; then
         print_warning "Las pruebas E2E aún no están implementadas"
+        rm -rf "$temp_log_dir"
         return 0
     elif [ ${#failed_services[@]} -eq 0 ]; then
         print_success "Pruebas E2E completadas exitosamente"
+        # Limpiar logs exitosos
+        rm -rf "$temp_log_dir"
         return 0
     else
         print_error "Las pruebas E2E fallaron en: ${failed_services[*]}"
+        echo ""
+        print_info "📁 Logs de errores guardados en: $temp_log_dir"
+        print_info "   Revisa los archivos de log para más detalles sobre los fallos"
+        echo ""
+        print_info "Para ver los logs de errores:"
+        for service in "${failed_services[@]}"; do
+            print_info "   cat ${temp_log_dir}/${service}_e2e_test.log"
+        done
         return 1
     fi
 }
