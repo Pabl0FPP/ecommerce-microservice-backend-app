@@ -13,34 +13,56 @@ spec:
       labels:
         app: service-discovery
     spec:
+      automountServiceAccountToken: false
       containers:
       - name: service-discovery
         image: selimhorri/service-discovery-ecommerce-boot:0.1.0
         ports:
         - containerPort: 8761
+          protocol: TCP
+        
         env:
-        - name: SPRING_ZIPKIN_BASE_URL
-          value: "http://zipkin:9411"
-        - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
-          value: "true"
         - name: SPRING_PROFILES_ACTIVE
           value: "local"
+        - name: SPRING_ZIPKIN_BASE_URL
+          value: "http://zipkin.ecommerce.svc.cluster.local:9411"
+        - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
+          value: "true"
         - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
           value: "false"
         - name: EUREKA_CLIENT_FETCH_REGISTRY
           value: "false"
-        livenessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8080
-          initialDelaySeconds: 90
-          periodSeconds: 30
+        - name: EUREKA_INSTANCE_HOSTNAME
+          value: "service-discovery"
+        
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "768Mi"
+            cpu: "500m"
+        
         readinessProbe:
           httpGet:
             path: /actuator/health
-            port: 8080
-          initialDelaySeconds: 60
+            port: 8761
+          initialDelaySeconds: 90
           periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 6
+        
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8761
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+      
+      restartPolicy: Always
+
 ---
 apiVersion: v1
 kind: Service
@@ -51,6 +73,8 @@ spec:
   selector:
     app: service-discovery
   ports:
-  - port: 8761
-    targetPort: 8080
-  type: NodePort
+  - name: http
+    port: 8761
+    targetPort: 8761
+    protocol: TCP
+  type: ClusterIP

@@ -13,26 +13,54 @@ spec:
       labels:
         app: cloud-config
     spec:
+      automountServiceAccountToken: false
       containers:
       - name: cloud-config
         image: selimhorri/cloud-config-ecommerce-boot:0.1.0
         ports:
         - containerPort: 9296
+          protocol: TCP
+        
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "dev"
         - name: SPRING_ZIPKIN_BASE_URL
-          value: "http://zipkin:9411"
-        - name: EUREKA_CLIENT_REGION
-          value: "default"
-        - name: EUREKA_CLIENT_AVAILABILITYZONES_DEFAULT
-          value: "myzone"
+          value: "http://zipkin.ecommerce.svc.cluster.local:9411"
+        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+          value: "http://service-discovery.ecommerce.svc.cluster.local:8761/eureka/"
         - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
           value: "true"
-        - name: EUREKA_CLIENT_SERVICEURL_MYZONE
-          value: "http://service-discovery:8761/eureka"
-        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
-          value: "http://service-discovery:8761/eureka/"
+        - name: EUREKA_INSTANCE_HOSTNAME
+          value: "cloud-config"
+        
+        resources:
+          requests:
+            memory: "384Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "300m"
+        
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 9296
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 6
+        
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 9296
+          initialDelaySeconds: 90
+          periodSeconds: 20
+          timeoutSeconds: 3
+          failureThreshold: 3
+      
+      restartPolicy: Always
+
 ---
 apiVersion: v1
 kind: Service
@@ -43,6 +71,8 @@ spec:
   selector:
     app: cloud-config
   ports:
-  - port: 9296
-    targetPort: 8080
-  type: NodePort
+  - name: http
+    port: 9296
+    targetPort: 9296
+    protocol: TCP
+  type: ClusterIP

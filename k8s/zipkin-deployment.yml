@@ -13,11 +13,42 @@ spec:
       labels:
         app: zipkin
     spec:
+      automountServiceAccountToken: false
       containers:
       - name: zipkin
         image: openzipkin/zipkin
         ports:
         - containerPort: 9411
+          protocol: TCP
+        
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "300m"
+        
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 9411
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 6
+        
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 9411
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+      
+      restartPolicy: Always
+
 ---
 apiVersion: v1
 kind: Service
@@ -28,6 +59,8 @@ spec:
   selector:
     app: zipkin
   ports:
-  - port: 9411
+  - name: http
+    port: 9411
     targetPort: 9411
-  type: NodePort
+    protocol: TCP
+  type: ClusterIP

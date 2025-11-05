@@ -13,34 +13,56 @@ spec:
       labels:
         app: order-service
     spec:
+      automountServiceAccountToken: false
       containers:
       - name: order-service
         image: selimhorri/order-service-ecommerce-boot:0.1.0
         ports:
         - containerPort: 8300
+          protocol: TCP
+        
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "dev"
         - name: SPRING_ZIPKIN_BASE_URL
-          value: "http://zipkin:9411"
+          value: "http://zipkin.ecommerce.svc.cluster.local:9411"
         - name: SPRING_CONFIG_IMPORT
-          value: "optional:configserver:http://cloud-config:9296/"
-        - name: EUREKA_CLIENT_REGION
-          value: "default"
-        - name: EUREKA_CLIENT_AVAILABILITYZONES_DEFAULT
-          value: "myzone"
+          value: "optional:configserver:http://cloud-config.ecommerce.svc.cluster.local:9296/"
+        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+          value: "http://service-discovery.ecommerce.svc.cluster.local:8761/eureka/"
         - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
           value: "true"
-        - name: EUREKA_CLIENT_SERVICEURL_MYZONE
-          value: "http://service-discovery:8761/eureka"
-        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
-          value: "http://service-discovery:8761/eureka/"
+        - name: EUREKA_INSTANCE_HOSTNAME
+          value: "order-service"
+        
+        resources:
+          requests:
+            memory: "384Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "300m"
+        
+        readinessProbe:
+          httpGet:
+            path: /order-service/actuator/health
+            port: 8300
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          timeoutSeconds: 3
+          failureThreshold: 6
+        
         livenessProbe:
           httpGet:
-            path: /actuator/health
+            path: /order-service/actuator/health
             port: 8300
-          initialDelaySeconds: 60
+          initialDelaySeconds: 150
           periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+      
+      restartPolicy: Always
+
 ---
 apiVersion: v1
 kind: Service
@@ -51,6 +73,8 @@ spec:
   selector:
     app: order-service
   ports:
-  - port: 8300
-    targetPort: 8080
-  type: NodePort
+  - name: http
+    port: 8300
+    targetPort: 8300
+    protocol: TCP
+  type: ClusterIP
