@@ -1,0 +1,594 @@
+name: Build, Push and Deploy (kind)
+
+on:
+  push:
+    branches:
+      - develop
+      - stage
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  PROJECT_VERSION: 0.1.0
+  KIND_VERSION: v0.20.0
+
+jobs:
+  # Determinar ambiente y tags según la rama
+  determine-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.ENVIRONMENT }}
+      image_tag: ${{ steps.env.outputs.IMAGE_TAG }}
+      namespace: ${{ steps.env.outputs.NAMESPACE }}
+      run_tests: ${{ steps.env.outputs.RUN_TESTS }}
+      create_release: ${{ steps.env.outputs.CREATE_RELEASE }}
+    steps:
+      - name: Determine environment and tags
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]] || [[ "${{ github.event.inputs.environment }}" == "prod" ]]; then
+            echo "ENVIRONMENT=prod" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAG=${{ env.PROJECT_VERSION }}" >> $GITHUB_OUTPUT
+            echo "NAMESPACE=ecommerce-prod" >> $GITHUB_OUTPUT
+            echo "RUN_TESTS=true" >> $GITHUB_OUTPUT
+            echo "CREATE_RELEASE=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/stage" ]] || [[ "${{ github.event.inputs.environment }}" == "stage" ]]; then
+            echo "ENVIRONMENT=stage" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAG=${{ env.PROJECT_VERSION }}stage" >> $GITHUB_OUTPUT
+            echo "NAMESPACE=ecommerce-stage" >> $GITHUB_OUTPUT
+            echo "RUN_TESTS=true" >> $GITHUB_OUTPUT
+            echo "CREATE_RELEASE=false" >> $GITHUB_OUTPUT
+          else
+            echo "ENVIRONMENT=dev" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAG=${{ env.PROJECT_VERSION }}dev" >> $GITHUB_OUTPUT
+            echo "NAMESPACE=ecommerce" >> $GITHUB_OUTPUT
+            echo "RUN_TESTS=false" >> $GITHUB_OUTPUT
+            echo "CREATE_RELEASE=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Job 1: Run Unit Tests (en paralelo para todos los servicios)
+  test-unit:
+    runs-on: ubuntu-latest
+    needs: determine-environment
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - cloud-config
+          - service-discovery
+          - api-gateway
+          - user-service
+          - product-service
+          - order-service
+          - payment-service
+          - shipping-service
+          - favourite-service
+          - proxy-client
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Run Unit Tests
+        run: |
+          echo "🧪 Running unit tests for ${{ matrix.service }}..."
+          PROFILE="${{ needs.determine-environment.outputs.environment }}"
+          
+          if [ "$PROFILE" == "dev" ]; then
+            ./mvnw test \
+              -Dtest="*ServiceImplTest,*HelperTest,*UtilTest,*ApplicationTests" \
+              -DfailIfNoTests=false \
+              -pl ${{ matrix.service }} \
+              -Dspring.profiles.active=dev
+          else
+            ./mvnw test \
+              -Dtest="*ServiceImplTest,*HelperTest,*UtilTest,*ApplicationTests" \
+              -DfailIfNoTests=false \
+              -pl ${{ matrix.service }} \
+              -Dspring.profiles.active=$PROFILE
+          fi
+      
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports-${{ matrix.service }}-${{ needs.determine-environment.outputs.environment }}
+          path: |
+            ${{ matrix.service }}/target/surefire-reports/**
+            ${{ matrix.service }}/target/test-results/**
+          retention-days: 7
+
+  # Job 2: Build and Push Docker Images (en paralelo para todos los servicios)
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: [determine-environment, test-unit]
+    strategy:
+      matrix:
+        service:
+          - cloud-config
+          - service-discovery
+          - api-gateway
+          - user-service
+          - product-service
+          - order-service
+          - payment-service
+          - shipping-service
+          - favourite-service
+          - proxy-client
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Build with Maven
+        run: mvn clean package -B --file pom.xml
+        env:
+          SPRING_PROFILES_ACTIVE: ${{ needs.determine-environment.outputs.environment }}
+      
+      - name: Docker Login
+        run: echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+      
+      - name: Build Docker image
+        run: |
+          docker build -f ${{ matrix.service }}/Dockerfile \
+            -t ${{ secrets.DOCKER_USERNAME }}/${{ matrix.service }}-ecommerce-boot:${{ needs.determine-environment.outputs.image_tag }} .
+      
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/${{ matrix.service }}-ecommerce-boot:${{ needs.determine-environment.outputs.image_tag }}
+
+  # Job 3: Setup kind cluster, Deploy All Services and Run Tests (todo en un solo job para que funcione)
+  deploy-and-test:
+    runs-on: ubuntu-latest
+    needs: [determine-environment, build-and-push]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind version
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          kubectl version --client
+
+      - name: Create kind cluster
+        run: |
+          kind create cluster --name ecommerce --config kind-cluster-config.yaml || true
+          kubectl cluster-info --context kind-ecommerce
+
+      - name: Wait for kind cluster to be ready
+        run: |
+          kubectl wait --for=condition=ready nodes --all --timeout=300s || echo "Nodes may still be initializing"
+
+      - name: Create namespace
+        run: |
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - || echo "Namespace already exists"
+
+      - name: Deploy core infrastructure
+        run: |
+          IMAGE_TAG="${{ needs.determine-environment.outputs.image_tag }}"
+          DOCKER_USER="${{ secrets.DOCKER_USERNAME }}"
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          ENV="${{ needs.determine-environment.outputs.environment }}"
+          
+          # Cloud Config
+          sed -i "s|image:.*/cloud-config-ecommerce-boot:.*|image: ${DOCKER_USER}/cloud-config-ecommerce-boot:${IMAGE_TAG}|g" k8s/cloud-config-deployment.yml
+          sed -i "s|namespace:.*|namespace: ${NAMESPACE}|g" k8s/cloud-config-deployment.yml
+          sed -i "s|value: \"dev\"|value: \"${ENV}\"|g" k8s/cloud-config-deployment.yml
+          sed -i "s|value: \"stage\"|value: \"${ENV}\"|g" k8s/cloud-config-deployment.yml
+          sed -i "s|value: \"prod\"|value: \"${ENV}\"|g" k8s/cloud-config-deployment.yml
+          kubectl apply -f k8s/cloud-config-deployment.yml -n "$NAMESPACE"
+          
+          # Service Discovery (Eureka)
+          sed -i "s|image:.*/service-discovery-ecommerce-boot:.*|image: ${DOCKER_USER}/service-discovery-ecommerce-boot:${IMAGE_TAG}|g" k8s/eureka-deployment.yml
+          sed -i "s|namespace:.*|namespace: ${NAMESPACE}|g" k8s/eureka-deployment.yml
+          sed -i "s|value: \"dev\"|value: \"${ENV}\"|g" k8s/eureka-deployment.yml
+          sed -i "s|value: \"stage\"|value: \"${ENV}\"|g" k8s/eureka-deployment.yml
+          sed -i "s|value: \"prod\"|value: \"${ENV}\"|g" k8s/eureka-deployment.yml
+          kubectl apply -f k8s/eureka-deployment.yml -n "$NAMESPACE"
+          
+          # Zipkin (si existe)
+          if [ -f k8s/zipkin-deployment.yml ]; then
+            sed -i "s|image:.*/zipkin.*|image: ${DOCKER_USER}/zipkin-ecommerce-boot:${IMAGE_TAG}|g" k8s/zipkin-deployment.yml || true
+            sed -i "s|namespace:.*|namespace: ${NAMESPACE}|g" k8s/zipkin-deployment.yml
+            kubectl apply -f k8s/zipkin-deployment.yml -n "$NAMESPACE"
+          fi
+
+      - name: Wait for core services
+        run: |
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          echo "Waiting for Cloud Config..."
+          kubectl rollout status deployment/cloud-config -n "$NAMESPACE" --timeout=600s || echo "⚠️  Cloud Config may still be starting"
+          
+          echo "Waiting for Service Discovery (Eureka)..."
+          kubectl rollout status deployment/service-discovery -n "$NAMESPACE" --timeout=600s || echo "⚠️  Eureka may still be starting"
+
+      - name: Show core services status
+        run: |
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          kubectl get pods -n "$NAMESPACE" | grep -E "(NAME|cloud-config|service-discovery|zipkin)"
+          kubectl get svc -n "$NAMESPACE" | grep -E "(NAME|cloud-config|service-discovery|zipkin)"
+
+      - name: Deploy API Gateway and microservices
+        run: |
+          IMAGE_TAG="${{ needs.determine-environment.outputs.image_tag }}"
+          DOCKER_USER="${{ secrets.DOCKER_USERNAME }}"
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          ENV="${{ needs.determine-environment.outputs.environment }}"
+          
+          # Actualizar tags de imagen, namespace y SPRING_PROFILES_ACTIVE en todos los manifests
+          SERVICES=("api-gateway" "user-service" "product-service" "order-service" "payment-service" "shipping-service" "favourite-service" "proxy-client")
+          
+          for service in "${SERVICES[@]}"; do
+            DEPLOYMENT_FILE="k8s/${service}-deployment.yml"
+            if [ -f "$DEPLOYMENT_FILE" ]; then
+              # Actualizar imagen
+              sed -i "s|image:.*/${service}-ecommerce-boot:.*|image: ${DOCKER_USER}/${service}-ecommerce-boot:${IMAGE_TAG}|g" "$DEPLOYMENT_FILE"
+              # Actualizar namespace
+              sed -i "s|namespace:.*|namespace: ${NAMESPACE}|g" "$DEPLOYMENT_FILE"
+              # Actualizar SPRING_PROFILES_ACTIVE
+              sed -i "s|value: \"dev\"|value: \"${ENV}\"|g" "$DEPLOYMENT_FILE"
+              sed -i "s|value: \"stage\"|value: \"${ENV}\"|g" "$DEPLOYMENT_FILE"
+              sed -i "s|value: \"prod\"|value: \"${ENV}\"|g" "$DEPLOYMENT_FILE"
+              # Aplicar
+              kubectl apply -f "$DEPLOYMENT_FILE" -n "$NAMESPACE"
+            fi
+          done
+
+      - name: Wait for services to be ready
+        run: |
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          SERVICES=("api-gateway" "user-service" "product-service" "order-service" "payment-service" "shipping-service" "favourite-service" "proxy-client")
+          
+          for service in "${SERVICES[@]}"; do
+            echo "Waiting for $service rollout..."
+            kubectl rollout status deployment/$service -n "$NAMESPACE" --timeout=600s || echo "⚠️  $service may still be starting"
+          done
+
+      - name: Show deployment status
+        run: |
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          echo "=== Pod Status ==="
+          kubectl get pods -n "$NAMESPACE"
+          echo ""
+          echo "=== Service Endpoints ==="
+          kubectl get svc -n "$NAMESPACE" -o wide
+
+      - name: Show service URLs (NodePort)
+        run: |
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          echo "🔍 Service URLs (NodePort):"
+          kubectl get svc -n "$NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.type}{"\t"}{.spec.ports[0].nodePort}{"\n"}{end}' | grep NodePort | awk '{print "  - " $1 ": http://localhost:" $3}' || echo "No NodePort services found"
+
+      # Solo ejecutar tests si estamos en stage/prod
+      - name: Wait for all services to be fully ready (for tests)
+        if: needs.determine-environment.outputs.run_tests == 'true'
+        run: |
+          echo "Waiting 90 seconds for all services to stabilize..."
+          sleep 90
+          
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          echo "Checking service health..."
+          kubectl get pods -n "$NAMESPACE" -o wide
+          
+          # Verificar que los pods estén en Running
+          echo "Waiting for all pods to be ready..."
+          kubectl wait --for=condition=ready pod -l app=api-gateway -n "$NAMESPACE" --timeout=300s || echo "⚠️  API Gateway may still be starting"
+          kubectl wait --for=condition=ready pod -l app=user-service -n "$NAMESPACE" --timeout=300s || echo "⚠️  User Service may still be starting"
+          kubectl wait --for=condition=ready pod -l app=product-service -n "$NAMESPACE" --timeout=300s || echo "⚠️  Product Service may still be starting"
+
+      # Solo ejecutar tests si estamos en stage/prod
+      - name: Set up JDK 11 (for tests)
+        if: needs.determine-environment.outputs.run_tests == 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Get service URLs for tests
+        if: needs.determine-environment.outputs.run_tests == 'true'
+        id: service-urls
+        run: |
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          
+          # Para kind, los servicios se comunican internamente por FQDN
+          echo "Service URLs configured for internal cluster communication"
+          echo "Services accessible via FQDN: <service-name>.${NAMESPACE}.svc.cluster.local"
+
+      - name: Run Integration Tests
+        if: needs.determine-environment.outputs.run_tests == 'true'
+        run: |
+          echo "🔍 Running integration tests..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          # Orden: servicios base primero, luego servicios que dependen de ellos
+          SERVICES=(
+            "user-service"
+            "product-service"
+            "order-service"
+            "favourite-service"
+            "shipping-service"
+            "payment-service"
+          )
+          
+          FAILED_SERVICES=()
+          
+          for service in "${SERVICES[@]}"; do
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🔍 Ejecutando pruebas de integración en $service..."
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            # Ejecutar tests de integración
+            ENV="${{ needs.determine-environment.outputs.environment }}"
+            ./mvnw test \
+              -Dtest="*IntegrationTest" \
+              -DfailIfNoTests=false \
+              -pl $service \
+              -Dspring.profiles.active=$ENV \
+              || {
+                echo "❌ Tests de integración fallaron en $service"
+                FAILED_SERVICES+=($service)
+              }
+          done
+          
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          if [ ${#FAILED_SERVICES[@]} -eq 0 ]; then
+            echo "✅ Todas las pruebas de integración pasaron"
+            exit 0
+          else
+            echo "❌ Las pruebas de integración fallaron en: ${FAILED_SERVICES[*]}"
+            exit 1
+          fi
+
+      - name: Run E2E Tests
+        if: needs.determine-environment.outputs.run_tests == 'true'
+        run: |
+          echo "🧪 Running E2E tests..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          # Orden: servicios que dependen de otros primero
+          SERVICES=(
+            "payment-service"
+            "favourite-service"
+            "shipping-service"
+            "order-service"
+            "product-service"
+            "user-service"
+          )
+          
+          FAILED_SERVICES=()
+          NO_TESTS=()
+          
+          for service in "${SERVICES[@]}"; do
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🔍 Ejecutando pruebas E2E en $service..."
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            # Ejecutar tests E2E
+            ENV="${{ needs.determine-environment.outputs.environment }}"
+            OUTPUT=$(./mvnw test \
+              -Dtest="*E2ETest" \
+              -DfailIfNoTests=false \
+              -pl $service \
+              -Dspring.profiles.active=$ENV 2>&1) || TEST_RESULT=$?
+            
+            if echo "$OUTPUT" | grep -q "No tests were found"; then
+              echo "⚠️  No hay pruebas E2E implementadas en $service"
+              NO_TESTS+=($service)
+            elif [ ${TEST_RESULT:-0} -eq 0 ]; then
+              echo "✅ Tests E2E pasaron en $service"
+            else
+              echo "❌ Tests E2E fallaron en $service"
+              FAILED_SERVICES+=($service)
+            fi
+          done
+          
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          if [ ${#NO_TESTS[@]} -gt 0 ]; then
+            echo "⚠️  Servicios sin tests E2E: ${NO_TESTS[*]}"
+          fi
+          
+          if [ ${#FAILED_SERVICES[@]} -eq 0 ]; then
+            echo "✅ Todas las pruebas E2E pasaron"
+            exit 0
+          else
+            echo "❌ Las pruebas E2E fallaron en: ${FAILED_SERVICES[*]}"
+            exit 1
+          fi
+
+      - name: Upload test reports
+        if: always() && needs.determine-environment.outputs.run_tests == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ needs.determine-environment.outputs.environment }}-kind
+          path: |
+            **/target/surefire-reports/**
+            **/target/test-results/**
+          retention-days: 30
+
+  # Job 4: Generate Release Notes and Create GitHub Release (solo en main/master)
+  release-notes:
+    name: Generate Release Notes
+    runs-on: ubuntu-latest
+    needs: [determine-environment, deploy-and-test]
+    if: |
+      needs.determine-environment.outputs.create_release == 'true' &&
+      github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Determine image tag
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
+            echo "IMAGE_TAG=${{ env.PROJECT_VERSION }}" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=production" >> $GITHUB_OUTPUT
+          else
+            echo "IMAGE_TAG=${{ env.PROJECT_VERSION }}dev" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=development" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$TAG" ]; then
+            echo "No previous tags found, will use first commit"
+            echo "PREVIOUS_TAG=" >> $GITHUB_OUTPUT
+            echo "HAS_PREVIOUS_TAG=false" >> $GITHUB_OUTPUT
+          else
+            echo "Previous tag: $TAG"
+            echo "PREVIOUS_TAG=$TAG" >> $GITHUB_OUTPUT
+            echo "HAS_PREVIOUS_TAG=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Get commits since last tag (or from push)
+        id: get_commits
+        run: |
+          if [ -n "${{ github.event.head_commit.message }}" ]; then
+            COMMITS="${{ github.event.head_commit.message }}"
+            echo "Using commit from event: $COMMITS"
+          elif [ "${{ steps.get_tag.outputs.HAS_PREVIOUS_TAG }}" == "true" ]; then
+            COMMITS=$(git log ${{ steps.get_tag.outputs.PREVIOUS_TAG }}..HEAD --pretty=format:"%s" --no-merges)
+          else
+            COMMITS=$(git log -1 --pretty=format:"%s" HEAD)
+          fi
+          
+          echo "$COMMITS" > /tmp/commits.txt
+          echo "=== Commits found ==="
+          echo "$COMMITS"
+          echo "===================="
+          
+          PREFIXES="^(chore|feature|feat|fix|docs|refactor|test|style|perf|ci|build):"
+          HAS_VALID=false
+          while IFS= read -r line; do
+            if [ -n "$line" ] && echo "$line" | grep -qE "$PREFIXES"; then
+              echo "✓ Valid commit found: $line"
+              HAS_VALID=true
+            fi
+          done <<< "$COMMITS"
+          
+          if [ "$HAS_VALID" == "true" ]; then
+            echo "HAS_VALID_COMMITS=true" >> $GITHUB_OUTPUT
+            echo "✓ Commits with conventional prefixes found"
+          else
+            echo "HAS_VALID_COMMITS=false" >> $GITHUB_OUTPUT
+            echo "✗ No commits with conventional prefixes found"
+          fi
+      
+      - name: Generate Release Notes
+        if: steps.get_commits.outputs.HAS_VALID_COMMITS == 'true'
+        id: release_notes
+        run: |
+          if [ -n "${{ github.event.head_commit.message }}" ]; then
+            COMMIT_MSG="${{ github.event.head_commit.message }}"
+            echo "Using commit from event: $COMMIT_MSG"
+          elif [ "${{ steps.get_tag.outputs.HAS_PREVIOUS_TAG }}" == "true" ]; then
+            COMMIT_MSG=$(git log ${{ steps.get_tag.outputs.PREVIOUS_TAG }}..HEAD --pretty=format:"%s" --no-merges | head -1)
+          else
+            COMMIT_MSG=$(git log -1 --pretty=format:"%s" HEAD)
+          fi
+          
+          echo "Processing commit: $COMMIT_MSG"
+          
+          PREFIXES="^(chore|feature|feat|fix|docs|refactor|test|style|perf|ci|build):"
+          FILTERED_COMMITS=$(echo "$COMMIT_MSG" | grep -E "$PREFIXES" | sed 's/^/- /' || echo "")
+          
+          if [ -z "$FILTERED_COMMITS" ]; then
+            echo "No valid commits found after filtering, skipping release"
+            echo "SKIP_RELEASE=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "Filtered commits:"
+          echo "$FILTERED_COMMITS"
+          
+          IMAGE_TAG="${{ steps.env.outputs.IMAGE_TAG }}"
+          NAMESPACE="${{ needs.determine-environment.outputs.namespace }}"
+          DEPLOY_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          {
+            echo "# Release $IMAGE_TAG"
+            echo ""
+            echo "## Changes"
+            echo ""
+            echo "$FILTERED_COMMITS"
+            echo ""
+            echo "## Deployment Info"
+            echo ""
+            echo "- **Image Tag**: $IMAGE_TAG"
+            echo "- **Namespace**: $NAMESPACE"
+            echo "- **Cluster**: kind (local)"
+            echo "- **Deployed at**: $DEPLOY_TIME"
+          } > /tmp/release_notes.md
+          
+          echo "SKIP_RELEASE=false" >> $GITHUB_OUTPUT
+          
+          echo "Release Notes generated:"
+          cat /tmp/release_notes.md
+      
+      - name: Create GitHub Release
+        if: |
+          steps.get_commits.outputs.HAS_VALID_COMMITS == 'true' &&
+          steps.release_notes.outputs.SKIP_RELEASE != 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.env.outputs.IMAGE_TAG }}
+          name: Release ${{ steps.env.outputs.IMAGE_TAG }} - Production (kind)
+          body_path: /tmp/release_notes.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Skip Release (no valid commits)
+        if: steps.get_commits.outputs.HAS_VALID_COMMITS != 'true'
+        run: |
+          echo "⏭️  Skipping release: No commits with conventional prefixes found"
+          echo "Commits must have prefixes like: chore:, feat:, fix:, etc."
+
