@@ -36,14 +36,6 @@ spec:
         - name: EUREKA_INSTANCE_HOSTNAME
           value: "proxy-client"
         
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "384Mi"
-            cpu: "300m"
-        
         readinessProbe:
           httpGet:
             path: /proxy-client/actuator/health

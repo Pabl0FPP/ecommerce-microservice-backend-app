@@ -36,14 +36,6 @@ spec:
         - name: EUREKA_INSTANCE_HOSTNAME
           value: "service-discovery"
         
-        resources:
-          requests:
-            memory: "384Mi"
-            cpu: "200m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        
         readinessProbe:
           httpGet:
             path: /actuator/health
