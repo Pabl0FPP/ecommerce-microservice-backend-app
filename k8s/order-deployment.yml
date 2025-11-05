@@ -37,29 +37,29 @@ spec:
         
         resources:
           requests:
-            memory: "384Mi"
+            memory: "256Mi"
             cpu: "100m"
           limits:
-            memory: "512Mi"
+            memory: "384Mi"
             cpu: "300m"
         
         readinessProbe:
           httpGet:
             path: /order-service/actuator/health
             port: 8300
-          initialDelaySeconds: 120
-          periodSeconds: 15
-          timeoutSeconds: 3
-          failureThreshold: 6
+          initialDelaySeconds: 180
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 8
         
         livenessProbe:
           httpGet:
             path: /order-service/actuator/health
             port: 8300
-          initialDelaySeconds: 150
+          initialDelaySeconds: 240
           periodSeconds: 30
-          timeoutSeconds: 3
-          failureThreshold: 3
+          timeoutSeconds: 5
+          failureThreshold: 5
       
       restartPolicy: Always
 

@@ -37,29 +37,29 @@ spec:
         
         resources:
           requests:
-            memory: "512Mi"
+            memory: "384Mi"
             cpu: "200m"
           limits:
-            memory: "768Mi"
+            memory: "512Mi"
             cpu: "500m"
         
         readinessProbe:
           httpGet:
             path: /actuator/health
             port: 8761
-          initialDelaySeconds: 90
-          periodSeconds: 15
+          initialDelaySeconds: 150
+          periodSeconds: 20
           timeoutSeconds: 5
-          failureThreshold: 6
+          failureThreshold: 8
         
         livenessProbe:
           httpGet:
             path: /actuator/health
             port: 8761
-          initialDelaySeconds: 120
+          initialDelaySeconds: 210
           periodSeconds: 30
           timeoutSeconds: 5
-          failureThreshold: 3
+          failureThreshold: 5
       
       restartPolicy: Always
 
