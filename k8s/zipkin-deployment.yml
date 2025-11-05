@@ -21,6 +21,16 @@ spec:
         ports:
         - containerPort: 9411
           protocol: TCP
+        env:
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Xms64m -Xmx300m -XX:MaxRAMPercentage=50"
+        resources:
+          requests:
+            cpu: "150m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "600Mi"
         
         readinessProbe:
           httpGet:

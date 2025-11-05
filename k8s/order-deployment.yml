@@ -17,14 +17,23 @@ spec:
       automountServiceAccountToken: false
       containers:
       - name: order-service
-        image: selimhorri/order-service-ecommerce-boot:0.1.0
+        image: pablofpp/order-service:0.1.0
         ports:
         - containerPort: 8300
           protocol: TCP
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+          limits:
+            cpu: "300m"
+            memory: "384Mi"
         
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "dev"
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Xms64m -Xmx192m -XX:MaxRAMPercentage=50"
         - name: SPRING_ZIPKIN_BASE_URL
           value: "http://zipkin.ecommerce.svc.cluster.local:9411"
         - name: SPRING_CONFIG_IMPORT

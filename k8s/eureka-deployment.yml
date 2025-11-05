@@ -17,14 +17,23 @@ spec:
       automountServiceAccountToken: false
       containers:
       - name: service-discovery
-        image: selimhorri/service-discovery-ecommerce-boot:0.1.0
+        image: pablofpp/service-discovery:0.1.0
         ports:
         - containerPort: 8761
           protocol: TCP
+        resources:
+          requests:
+            cpu: "150m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
         
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "local"
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Xms64m -Xmx256m -XX:MaxRAMPercentage=50"
         - name: SPRING_ZIPKIN_BASE_URL
           value: "http://zipkin.ecommerce.svc.cluster.local:9411"
         - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS

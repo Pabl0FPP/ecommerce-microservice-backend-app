@@ -17,14 +17,23 @@ spec:
       automountServiceAccountToken: false
       containers:
       - name: cloud-config
-        image: selimhorri/cloud-config-ecommerce-boot:0.1.0
+        image: pablofpp/cloud-config:0.1.0
         ports:
         - containerPort: 9296
           protocol: TCP
+        resources:
+          requests:
+            cpu: "150m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
         
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "dev"
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Xms64m -Xmx256m -XX:MaxRAMPercentage=50"
         - name: SPRING_ZIPKIN_BASE_URL
           value: "http://zipkin.ecommerce.svc.cluster.local:9411"
         - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE

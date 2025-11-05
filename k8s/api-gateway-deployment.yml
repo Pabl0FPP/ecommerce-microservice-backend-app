@@ -17,14 +17,23 @@ spec:
       automountServiceAccountToken: false
       containers:
       - name: api-gateway
-        image: selimhorri/api-gateway-ecommerce-boot:0.1.0
+        image: pablofpp/api-gateway:0.1.0
         ports:
         - containerPort: 8080
           protocol: TCP
+        resources:
+          requests:
+            cpu: "150m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "600Mi"
         
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "dev"
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Xms64m -Xmx300m -XX:MaxRAMPercentage=50"
         - name: SPRING_ZIPKIN_BASE_URL
           value: "http://zipkin.ecommerce.svc.cluster.local:9411"
         - name: SPRING_CONFIG_IMPORT

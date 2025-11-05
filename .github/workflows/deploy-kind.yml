@@ -153,11 +153,11 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -f ${{ matrix.service }}/Dockerfile \
-            -t ${{ secrets.DOCKER_USERNAME }}/${{ matrix.service }}-ecommerce-boot:${{ needs.determine-environment.outputs.image_tag }} .
+            -t ${{ secrets.DOCKER_USERNAME }}/${{ matrix.service }}:${{ needs.determine-environment.outputs.image_tag }} .
       
       - name: Push Docker image
         run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/${{ matrix.service }}-ecommerce-boot:${{ needs.determine-environment.outputs.image_tag }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/${{ matrix.service }}:${{ needs.determine-environment.outputs.image_tag }}
 
   # Job 3: Setup kind cluster, Deploy All Services and Run Tests (todo en un solo job para que funcione)
   deploy-and-test:
@@ -205,7 +205,7 @@ jobs:
           ENV="${{ needs.determine-environment.outputs.environment }}"
           
           # Cloud Config
-          sed -i "s|image:.*/cloud-config-ecommerce-boot:.*|image: ${DOCKER_USER}/cloud-config-ecommerce-boot:${IMAGE_TAG}|g" k8s/cloud-config-deployment.yml
+          sed -i "s|image: .*cloud-config:.*|image: ${DOCKER_USER}/cloud-config:${IMAGE_TAG}|g" k8s/cloud-config-deployment.yml
           sed -i "s|namespace:.*|namespace: ${NAMESPACE}|g" k8s/cloud-config-deployment.yml
           sed -i "s|value: \"dev\"|value: \"${ENV}\"|g" k8s/cloud-config-deployment.yml
           sed -i "s|value: \"stage\"|value: \"${ENV}\"|g" k8s/cloud-config-deployment.yml
@@ -213,16 +213,15 @@ jobs:
           kubectl apply -f k8s/cloud-config-deployment.yml -n "$NAMESPACE"
           
           # Service Discovery (Eureka)
-          sed -i "s|image:.*/service-discovery-ecommerce-boot:.*|image: ${DOCKER_USER}/service-discovery-ecommerce-boot:${IMAGE_TAG}|g" k8s/eureka-deployment.yml
+          sed -i "s|image: .*service-discovery:.*|image: ${DOCKER_USER}/service-discovery:${IMAGE_TAG}|g" k8s/eureka-deployment.yml
           sed -i "s|namespace:.*|namespace: ${NAMESPACE}|g" k8s/eureka-deployment.yml
           sed -i "s|value: \"dev\"|value: \"${ENV}\"|g" k8s/eureka-deployment.yml
           sed -i "s|value: \"stage\"|value: \"${ENV}\"|g" k8s/eureka-deployment.yml
           sed -i "s|value: \"prod\"|value: \"${ENV}\"|g" k8s/eureka-deployment.yml
           kubectl apply -f k8s/eureka-deployment.yml -n "$NAMESPACE"
           
-          # Zipkin (si existe)
+          # Zipkin (si existe): mantener imagen oficial, solo ajustar namespace
           if [ -f k8s/zipkin-deployment.yml ]; then
-            sed -i "s|image:.*/zipkin.*|image: ${DOCKER_USER}/zipkin-ecommerce-boot:${IMAGE_TAG}|g" k8s/zipkin-deployment.yml || true
             sed -i "s|namespace:.*|namespace: ${NAMESPACE}|g" k8s/zipkin-deployment.yml
             kubectl apply -f k8s/zipkin-deployment.yml -n "$NAMESPACE"
           fi
@@ -256,7 +255,7 @@ jobs:
             DEPLOYMENT_FILE="k8s/${service}-deployment.yml"
             if [ -f "$DEPLOYMENT_FILE" ]; then
               # Actualizar imagen
-              sed -i "s|image:.*/${service}-ecommerce-boot:.*|image: ${DOCKER_USER}/${service}-ecommerce-boot:${IMAGE_TAG}|g" "$DEPLOYMENT_FILE"
+              sed -i "s|image: .*${service}:.*|image: ${DOCKER_USER}/${service}:${IMAGE_TAG}|g" "$DEPLOYMENT_FILE"
               # Actualizar namespace
               sed -i "s|namespace:.*|namespace: ${NAMESPACE}|g" "$DEPLOYMENT_FILE"
               # Actualizar SPRING_PROFILES_ACTIVE
